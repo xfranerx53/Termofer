@@ -38,9 +38,15 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:none}
 #login h1{font-size:28px;font-weight:800;letter-spacing:-.02em}
 #login p{color:var(--muted);font-size:15px}
 input{
-  font:inherit;color:var(--text);background:var(--surface);border:1px solid var(--line);
+  font:inherit;font-size:16px;color:var(--text);background:var(--surface);border:1px solid var(--line);
   border-radius:12px;padding:14px 16px;width:100%;
+  -webkit-appearance:none;appearance:none;
+  -webkit-user-select:text;user-select:text;pointer-events:auto;
 }
+.pwrow{position:relative}
+.pwrow input{padding-right:84px}
+.eye{position:absolute;right:6px;top:50%;transform:translateY(-50%);padding:8px 10px;font-size:14px;color:var(--muted)}
+#login form{display:flex;flex-direction:column;gap:14px}
 .primary{background:var(--heat);color:#1a0f05;font-weight:600;padding:14px;border-radius:12px}
 .err{color:var(--danger);font-size:14px;min-height:1.2em}
 
@@ -99,13 +105,18 @@ svg{width:100%;height:100%;display:block;overflow:visible}
 <main>
 
 <!-- Giriş -->
-<section id="login" hidden>
+<section id="login">
   <h1>Termostat</h1>
   <p>Devam etmek için giriş yap.</p>
-  <input id="email" type="email" placeholder="E-posta" autocomplete="username">
-  <input id="pass" type="password" placeholder="Şifre" autocomplete="current-password">
-  <button class="primary" id="loginBtn">Giriş yap</button>
-  <div class="err" id="loginErr"></div>
+  <form id="loginForm" novalidate>
+    <input id="email" type="email" inputmode="email" placeholder="E-posta" autocomplete="username" autocapitalize="off" autocorrect="off" spellcheck="false">
+    <div class="pwrow">
+      <input id="pass" type="password" placeholder="Şifre" autocomplete="current-password" autocapitalize="off" autocorrect="off" spellcheck="false">
+      <button type="button" class="eye" id="eye">Göster</button>
+    </div>
+    <button type="submit" class="primary" id="loginBtn">Giriş yap</button>
+    <div class="err" id="loginErr" role="alert"></div>
+  </form>
 </section>
 
 <!-- Ana ekran -->
@@ -154,7 +165,7 @@ import { getDatabase, ref, onValue, update }
 
 // ---- AYAR: Firebase Console > Proje ayarları > Web uygulaması'ndan al ----
 const firebaseConfig = {
-  apiKey: "BURAYA_API_KEY",
+  apiKey: "AIzaSyBQFYdIPW_HBE0qvQOP5MQNF-n27nK7Ozw",
   authDomain: "termostat-50c8f.firebaseapp.com",
   databaseURL: "https://termostat-50c8f-default-rtdb.firebaseio.com",
   projectId: "termostat-50c8f",
@@ -190,13 +201,29 @@ onAuthStateChanged(auth, user => {
     onValue(ref(db, ".info/connected"), c => { netOk = !!c.val(); render(); });
   }
 });
-async function login() {
+const AUTH_ERR = {
+  "auth/invalid-credential": "E-posta veya şifre hatalı.",
+  "auth/invalid-email": "E-posta adresi geçersiz.",
+  "auth/user-not-found": "Bu e-posta ile kullanıcı yok.",
+  "auth/wrong-password": "Şifre hatalı.",
+  "auth/operation-not-allowed": "Firebase'de E-posta/Şifre girişi açık değil.",
+  "auth/network-request-failed": "İnternet bağlantısı yok.",
+  "auth/too-many-requests": "Çok fazla deneme. Biraz bekleyip tekrar dene.",
+  "auth/api-key-not-valid": "API anahtarı geçersiz.",
+};
+$("loginForm").addEventListener("submit", async e => {
+  e.preventDefault();
   $("loginErr").textContent = "";
+  $("loginBtn").disabled = true;
   try { await signInWithEmailAndPassword(auth, $("email").value.trim(), $("pass").value); }
-  catch (e) { $("loginErr").textContent = "E-posta veya şifre hatalı."; }
-}
-$("loginBtn").onclick = login;
-$("pass").onkeydown = e => e.key === "Enter" && login();
+  catch (err) { $("loginErr").textContent = AUTH_ERR[err.code] || ("Giriş yapılamadı: " + (err.code || err.message)); }
+  $("loginBtn").disabled = false;
+});
+$("eye").onclick = () => {
+  const p = $("pass"), show = p.type === "password";
+  p.type = show ? "text" : "password";
+  $("eye").textContent = show ? "Gizle" : "Göster";
+};
 $("logout").onclick = () => signOut(auth);
 
 /* ---------- Komut gönderme (kısa gecikmeyle toplu) ---------- */
