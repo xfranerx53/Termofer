@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#10151b">
+<title>Termostat</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#10151b; --surface:#182029; --line:#26323d; --text:#e8edf2; --muted:#8a98a6;
+  --cool:#7fb3d5; --heat:#ff8f3a; --off:#4a5560; --danger:#ff6b6b;
+  --font:"Figtree",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+}
+@media (prefers-color-scheme:light){
+  :root:not([data-theme="dark"]){
+    --bg:#eef2f5; --surface:#fff; --line:#d5dde4; --text:#17202a; --muted:#5d6b78;
+    --cool:#2f7fb0; --heat:#e8741c; --off:#aab4be; --danger:#c93a3a;
+  }
+}
+*{box-sizing:border-box;margin:0}
+html,body{height:100%}
+body{
+  background:var(--bg);color:var(--text);font-family:var(--font);
+  padding:env(safe-area-inset-top,0) 16px env(safe-area-inset-bottom,0);
+  display:flex;justify-content:center;
+  -webkit-tap-highlight-color:transparent;
+}
+main{width:100%;max-width:420px;padding:20px 0 32px;display:flex;flex-direction:column;gap:20px}
+[hidden]{display:none!important}
+button{font:inherit;color:inherit;cursor:pointer;border:0;background:none}
+:focus-visible{outline:2px solid var(--cool);outline-offset:3px}
+
+/* giriş */
+#login{margin:auto 0;display:flex;flex-direction:column;gap:14px}
+#login h1{font-size:28px;font-weight:800;letter-spacing:-.02em}
+#login p{color:var(--muted);font-size:15px}
+input{
+  font:inherit;color:var(--text);background:var(--surface);border:1px solid var(--line);
+  border-radius:12px;padding:14px 16px;width:100%;
+}
+.primary{background:var(--heat);color:#1a0f05;font-weight:600;padding:14px;border-radius:12px}
+.err{color:var(--danger);font-size:14px;min-height:1.2em}
+
+/* üst çubuk */
+header{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.status{display:flex;align-items:center;gap:8px;font-size:14px;color:var(--muted)}
+.dot{width:9px;height:9px;border-radius:50%;background:var(--off)}
+.status.on .dot{background:#4cc38a}
+.status.bad .dot{background:var(--danger)}
+.link{font-size:14px;color:var(--muted);padding:6px 4px}
+
+/* kadran */
+.dialwrap{position:relative;width:100%;aspect-ratio:1;touch-action:none;user-select:none}
+svg{width:100%;height:100%;display:block;overflow:visible}
+.track{stroke:var(--line)}
+.prog{stroke:var(--cool);transition:stroke .4s}
+.knob{fill:var(--text);stroke:var(--bg);stroke-width:4;cursor:grab}
+.tick{fill:var(--muted)}
+.glow{fill:none;stroke:var(--heat);opacity:0;filter:blur(14px);transition:opacity .6s}
+.heating .prog{stroke:var(--heat)}
+.heating .glow{opacity:.55;animation:breathe 3.2s ease-in-out infinite}
+.off .prog{stroke:var(--off)}
+.off .knob{fill:var(--off)}
+@keyframes breathe{50%{opacity:.25}}
+.center{
+  position:absolute;inset:0;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:2px;pointer-events:none;text-align:center;
+}
+.now{font-size:clamp(56px,20vw,84px);font-weight:800;letter-spacing:-.04em;line-height:1;font-variant-numeric:tabular-nums}
+.now small{font-size:.38em;font-weight:600;color:var(--muted);letter-spacing:0;margin-left:2px}
+.state{font-size:15px;font-weight:600;color:var(--muted);margin-top:6px}
+.heating .state{color:var(--heat)}
+.tgt{font-size:14px;color:var(--muted);font-variant-numeric:tabular-nums}
+.stale .now{opacity:.45}
+
+/* kontroller */
+.controls{display:flex;align-items:center;justify-content:center;gap:18px;margin-top:-34px}
+.round{
+  width:68px;height:68px;border-radius:50%;background:var(--surface);border:1px solid var(--line);
+  font-size:30px;font-weight:600;display:grid;place-items:center;transition:transform .12s;
+}
+.round:active{transform:scale(.93)}
+.pwr{width:84px;height:84px;font-size:15px;font-weight:600}
+.pwr.on{background:var(--heat);border-color:var(--heat);color:#1a0f05}
+.info{
+  display:flex;justify-content:space-between;background:var(--surface);
+  border:1px solid var(--line);border-radius:16px;padding:14px 18px;font-size:15px;
+}
+.info b{font-variant-numeric:tabular-nums}
+.info span{color:var(--muted)}
+.toast{text-align:center;font-size:14px;color:var(--danger);min-height:1.2em}
+@media (prefers-reduced-motion:reduce){.heating .glow{animation:none;opacity:.4}*{transition:none!important}}
+</style>
+</head>
+<body>
+<main>
+
+<!-- Giriş -->
+<section id="login" hidden>
+  <h1>Termostat</h1>
+  <p>Devam etmek için giriş yap.</p>
+  <input id="email" type="email" placeholder="E-posta" autocomplete="username">
+  <input id="pass" type="password" placeholder="Şifre" autocomplete="current-password">
+  <button class="primary" id="loginBtn">Giriş yap</button>
+  <div class="err" id="loginErr"></div>
+</section>
+
+<!-- Ana ekran -->
+<section id="app" hidden style="display:flex;flex-direction:column;gap:20px">
+  <header>
+    <div class="status" id="status"><span class="dot"></span><span id="statusTxt">Bağlanıyor…</span></div>
+    <button class="link" id="logout">Çıkış yap</button>
+  </header>
+
+  <div class="dialwrap" id="dial">
+    <svg viewBox="0 0 300 300" aria-hidden="true">
+      <path id="glow" class="glow" stroke-width="14" stroke-linecap="round"/>
+      <path id="track" class="track" fill="none" stroke-width="14" stroke-linecap="round"/>
+      <path id="prog" class="prog" fill="none" stroke-width="14" stroke-linecap="round"/>
+      <circle id="tick" class="tick" r="5"/>
+      <circle id="knob" class="knob" r="14"/>
+    </svg>
+    <div class="center">
+      <div class="now" id="now">--</div>
+      <div class="state" id="state">—</div>
+      <div class="tgt" id="tgt"></div>
+    </div>
+  </div>
+
+  <div class="controls">
+    <button class="round" id="minus" aria-label="Hedefi 0,5 derece düşür">−</button>
+    <button class="round pwr" id="power" aria-label="Aç / kapat">Aç</button>
+    <button class="round" id="plus" aria-label="Hedefi 0,5 derece artır">+</button>
+  </div>
+
+  <div class="info">
+    <div><span>Nem </span><b id="hum">--</b></div>
+    <div><span>Son veri </span><b id="seen">--</b></div>
+  </div>
+  <div class="toast" id="toast"></div>
+</section>
+
+</main>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut }
+  from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+import { getDatabase, ref, onValue, update }
+  from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+
+// ---- AYAR: Firebase Console > Proje ayarları > Web uygulaması'ndan al ----
+const firebaseConfig = {
+  apiKey: "BURAYA_API_KEY",
+  authDomain: "termostat-50c8f.firebaseapp.com",
+  databaseURL: "https://termostat-50c8f-default-rtdb.firebaseio.com",
+  projectId: "termostat-50c8f",
+};
+const TMIN = 10, TMAX = 30, STEP = 0.5, OFFLINE_SEC = 60;
+
+const $ = id => document.getElementById(id);
+const fmt = (n, d = 1) => Number(n).toLocaleString("tr-TR", { minimumFractionDigits: d, maximumFractionDigits: d });
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app), db = getDatabase(app);
+
+const s = { target: 21, power: true, heating: false, temp: null, hum: null, lastSeen: 0 };
+let editUntil = 0, netOk = true, unsub = null, timer;
+
+/* ---------- Giriş ---------- */
+onAuthStateChanged(auth, user => {
+  $("login").hidden = !!user;
+  $("app").hidden = !user;
+  if (unsub) { unsub(); unsub = null; }
+  if (user) {
+    unsub = onValue(ref(db, "thermostat"), snap => {
+      const v = snap.val() || {};
+      if (Date.now() > editUntil) {           // kullanıcı ayar yaparken uzaktan gelen değeri ezme
+        if (typeof v.targetTemp === "number") s.target = v.targetTemp;
+        if (typeof v.power === "boolean") s.power = v.power;
+      }
+      s.heating = !!v.heating;
+      s.temp = typeof v.currentTemp === "number" ? v.currentTemp : null;
+      s.hum = typeof v.humidity === "number" ? v.humidity : null;
+      s.lastSeen = v.lastSeen || 0;
+      render();
+    }, e => toast("Veri okunamadı: " + e.code));
+    onValue(ref(db, ".info/connected"), c => { netOk = !!c.val(); render(); });
+  }
+});
+async function login() {
+  $("loginErr").textContent = "";
+  try { await signInWithEmailAndPassword(auth, $("email").value.trim(), $("pass").value); }
+  catch (e) { $("loginErr").textContent = "E-posta veya şifre hatalı."; }
+}
+$("loginBtn").onclick = login;
+$("pass").onkeydown = e => e.key === "Enter" && login();
+$("logout").onclick = () => signOut(auth);
+
+/* ---------- Komut gönderme (kısa gecikmeyle toplu) ---------- */
+function commit() {
+  clearTimeout(timer);
+  timer = setTimeout(() => {
+    update(ref(db, "thermostat"), { targetTemp: s.target, power: s.power })
+      .then(() => toast(""))
+      .catch(e => toast("Gönderilemedi: " + e.code));
+  }, 400);
+}
+function setTarget(v) {
+  v = Math.min(TMAX, Math.max(TMIN, Math.round(v / STEP) * STEP));
+  if (v === s.target) return;
+  s.target = v; editUntil = Date.now() + 3000; render(); commit();
+}
+$("minus").onclick = () => setTarget(s.target - STEP);
+$("plus").onclick = () => setTarget(s.target + STEP);
+$("power").onclick = () => { s.power = !s.power; editUntil = Date.now() + 3000; render(); commit(); };
+
+/* ---------- Kadran ---------- */
+const CX = 150, CY = 150, R = 118, A0 = 135, SWEEP = 270;
+const ang = v => A0 + (Math.min(TMAX, Math.max(TMIN, v)) - TMIN) / (TMAX - TMIN) * SWEEP;
+const pt = a => [CX + R * Math.cos(a * Math.PI / 180), CY + R * Math.sin(a * Math.PI / 180)];
+function arc(a1, a2) {
+  const [x1, y1] = pt(a1), [x2, y2] = pt(a2);
+  return `M${x1.toFixed(2)} ${y1.toFixed(2)} A${R} ${R} 0 ${a2 - a1 > 180 ? 1 : 0} 1 ${x2.toFixed(2)} ${y2.toFixed(2)}`;
+}
+$("track").setAttribute("d", arc(A0, A0 + SWEEP));
+
+const dial = $("dial");
+function fromPointer(e) {
+  const r = dial.getBoundingClientRect();
+  const x = (e.clientX - r.left) / r.width * 300 - CX, y = (e.clientY - r.top) / r.height * 300 - CY;
+  let rel = ((Math.atan2(y, x) * 180 / Math.PI) - A0 + 360) % 360;
+  if (rel > SWEEP) rel = rel > SWEEP + (360 - SWEEP) / 2 ? 0 : SWEEP;
+  setTarget(TMIN + rel / SWEEP * (TMAX - TMIN));
+}
+let dragging = false;
+dial.addEventListener("pointerdown", e => { dragging = true; dial.setPointerCapture(e.pointerId); fromPointer(e); });
+dial.addEventListener("pointermove", e => dragging && fromPointer(e));
+dial.addEventListener("pointerup", () => dragging = false);
+dial.addEventListener("pointercancel", () => dragging = false);
+
+/* ---------- Çizim ---------- */
+function deviceOnline() { return s.lastSeen && (Date.now() / 1000 - s.lastSeen) < OFFLINE_SEC; }
+function render() {
+  const online = netOk && deviceOnline();
+  const st = $("status");
+  st.className = "status " + (!netOk ? "bad" : online ? "on" : "bad");
+  $("statusTxt").textContent = !netOk ? "İnternet bağlantısı yok" : online ? "Cihaz çevrimiçi" : "Cihaz çevrimdışı";
+
+  const a = ang(s.target), [kx, ky] = pt(a);
+  $("prog").setAttribute("d", arc(A0, Math.max(A0 + .01, a)));
+  $("glow").setAttribute("d", arc(A0, Math.max(A0 + .01, a)));
+  $("knob").setAttribute("cx", kx); $("knob").setAttribute("cy", ky);
+  const tick = $("tick");
+  if (s.temp == null) tick.setAttribute("r", 0);
+  else { const [tx, ty] = pt(ang(s.temp)); tick.setAttribute("r", 5); tick.setAttribute("cx", tx); tick.setAttribute("cy", ty); }
+
+  const heating = s.power && s.heating;
+  dial.classList.toggle("heating", heating);
+  dial.classList.toggle("off", !s.power);
+  dial.classList.toggle("stale", !online);
+  $("now").innerHTML = s.temp == null ? "--" : `${fmt(s.temp)}<small>°C</small>`;
+  $("state").textContent = !s.power ? "Kapalı" : heating ? "Isıtıyor" : "Bekliyor";
+  $("tgt").textContent = `Hedef ${fmt(s.target)} °C`;
+  $("power").textContent = s.power ? "Kapat" : "Aç";
+  $("power").classList.toggle("on", s.power);
+  $("hum").textContent = s.hum == null ? "--" : `%${fmt(s.hum, 0)}`;
+  const age = s.lastSeen ? Math.max(0, Math.round(Date.now() / 1000 - s.lastSeen)) : null;
+  $("seen").textContent = age == null ? "--" : age < 90 ? `${age} sn önce` : `${Math.round(age / 60)} dk önce`;
+}
+function toast(t) { $("toast").textContent = t; }
+setInterval(render, 5000);
+render();
+</script>
+</body>
+</html>
