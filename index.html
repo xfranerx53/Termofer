@@ -48,11 +48,11 @@ input,select{font:inherit;font-size:16px;color:var(--tx);background:#fff;border:
 .pill{display:flex;align-items:center;gap:6px;border:1px solid #fff;border-radius:20px;padding:7px 14px;color:#fff;font-weight:600;font-size:15px}
 .dot{width:10px;height:10px;border-radius:50%;background:#bbb}.on .dot,.dot.on{background:var(--ok)}.bad .dot{background:var(--bad)}
 .gauge{position:relative;padding:8px 8px 20px;margin-top:6px}
-.gauge svg{width:100%;display:block}
-.gc{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;padding-top:10px}
+.gauge svg{width:100%;display:block;touch-action:none;user-select:none}#knob{cursor:grab}
+.gc{pointer-events:none;position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;padding-top:10px}
 .gc .h{font-weight:800;font-size:22px}.gc .t{font-size:72px;font-weight:800;line-height:1}.stale .t{opacity:.4}
 .gc .g{display:flex;align-items:center;gap:22px;color:#8a8f98;font-size:34px;font-weight:600;margin-top:4px}
-.gc .g button{font-size:34px;color:#8a8f98;padding:4px 10px}
+.gc .g button{pointer-events:auto;font-size:34px;color:#8a8f98;padding:4px 10px}
 .modes{display:flex;justify-content:space-around;background:#fff;border-radius:18px;padding:10px 4px}
 .modes button{display:flex;flex-direction:column;align-items:center;gap:3px;font-size:12px;font-weight:800;color:#8a8f98;letter-spacing:.04em;padding:6px 10px}
 .modes button span{font-size:26px}.modes .a{color:var(--o)}
@@ -88,7 +88,7 @@ input,select{font:inherit;font-size:16px;color:var(--tx);background:#fff;border:
     <div class="hname" id="hname">Termofer</div>
     <div class="pills"><div class="pill" id="pOut">☀ <span id="out">--</span></div><div class="pill" id="pDev"><span class="dot"></span><span id="devTxt">Cihaz</span></div></div>
     <div class="card gauge" id="gauge">
-      <svg viewBox="0 0 300 260"><path id="trk" fill="none" stroke="#eee" stroke-width="12" stroke-linecap="round"/><path id="prg" fill="none" stroke="#ff5733" stroke-width="12" stroke-linecap="round"/><circle id="knob" r="14" fill="#e23d12"/></svg>
+      <svg viewBox="0 0 300 260"><path id="trk" fill="none" stroke="#eee" stroke-width="12" stroke-linecap="round"/><path id="prg" fill="none" stroke="#ff5733" stroke-width="12" stroke-linecap="round"/><circle id="tick" r="5" fill="#8a8f98"/><circle id="knob" r="15" fill="#e23d12" stroke="#fff" stroke-width="4"/></svg>
       <div class="gc"><div class="h" id="hum">--</div><div class="t" id="now">--</div><div class="g"><button id="minus" aria-label="Azalt">‹</button><span id="tgt">--</span><button id="plus" aria-label="Artır">›</button></div></div>
     </div>
     <div class="chips" id="chips"></div>
@@ -211,10 +211,23 @@ const saveCfg = o => update(ref(db, "termofer"), o).catch(e => toast("Kaydedilem
 function setTarget(v, userEdit = true) {
   v = Math.min(TMAX, Math.max(TMIN, Math.round(v / STEP) * STEP));
   if (v === s.target) return;
+  if (cfg.mode === "program" && userEdit) { cfg.mode = "manual"; saveCfg({ mode: "manual" }); }
   s.target = v; editUntil = Date.now() + 3000; render(); push();
 }
 $("minus").onclick = () => setTarget(s.target - STEP);
 $("plus").onclick = () => setTarget(s.target + STEP);
+const svg = $("gauge").querySelector("svg"); let drag = false;
+function fromPointer(e) {
+  const r = svg.getBoundingClientRect();
+  const x = (e.clientX - r.left) / r.width * 300 - CX, y = (e.clientY - r.top) / r.height * 260 - CY;
+  let rel = ((Math.atan2(y, x) * 180 / Math.PI) - A0 + 360) % 360;
+  if (rel > SW) rel = rel > SW + (360 - SW) / 2 ? 0 : SW;
+  setTarget(TMIN + rel / SW * (TMAX - TMIN));
+}
+svg.addEventListener("pointerdown", e => { drag = true; svg.setPointerCapture(e.pointerId); fromPointer(e); });
+svg.addEventListener("pointermove", e => drag && fromPointer(e));
+svg.addEventListener("pointerup", () => drag = false);
+svg.addEventListener("pointercancel", () => drag = false);
 $("modes").onclick = e => {
   const m = e.target.closest("button")?.dataset.m; if (!m) return;
   cfg.mode = m; s.power = m !== "off"; editUntil = Date.now() + 3000;
@@ -273,9 +286,10 @@ function render() {
   $("devTxt").textContent = !netOk ? "Çevrimdışı" : on ? "Cihaz" : "Cihaz yok";
   $("out").textContent = outT == null ? "--" : fmt(outT) + "°";
   $("gauge").classList.toggle("stale", !on);
-  const a = s.temp == null ? A0 : ang(s.temp), [kx, ky] = pt(a);
+  const a = ang(s.target), [kx, ky] = pt(a);
   $("prg").setAttribute("d", arc(A0, Math.max(A0 + .01, a)));
   $("knob").setAttribute("cx", kx); $("knob").setAttribute("cy", ky);
+  const tk = $("tick"); if (s.temp == null) tk.setAttribute("r", 0); else { const [tx, ty] = pt(ang(s.temp)); tk.setAttribute("r", 5); tk.setAttribute("cx", tx); tk.setAttribute("cy", ty); }
   $("now").textContent = s.temp == null ? "--" : fmt(s.temp) + "°";
   $("hum").textContent = s.hum == null ? "" : "%" + fmt(s.hum, 0);
   $("tgt").textContent = s.power ? fmt(s.target) + "°" : "Kapalı";
