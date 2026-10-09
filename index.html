@@ -66,6 +66,7 @@ input,select{font:inherit;font-size:16px;color:var(--tx);background:#fff;border:
 .opt{display:flex;gap:12px;padding:10px 0;align-items:flex-start}.opt input{width:22px;height:22px;accent-color:var(--o);padding:0;margin-top:2px}
 .tabs{display:flex;gap:6px;background:var(--bg);border-radius:12px;padding:4px}
 .tabs button{flex:1;padding:9px;border-radius:9px;font-weight:600;color:var(--mu)}.tabs .a{background:#2f80ed;color:#fff}
+#hd button.rec{background:rgba(255,255,255,.3);border-radius:50%;animation:pl 1s infinite}@keyframes pl{50%{opacity:.45}}
 .stat{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .stat .card b{font-size:34px;font-weight:800}.stat small{display:block;color:var(--mu)}
 </style>
@@ -82,11 +83,12 @@ input,select{font:inherit;font-size:16px;color:var(--tx);background:#fff;border:
 </section>
 
 <section id="app" hidden>
-  <div id="hd"><button id="back" aria-label="Geri">←</button><b id="ttl">Termofer</b><span id="hdr"><button id="goRep" aria-label="Raporlar">▥</button><button id="goSet" aria-label="Ayarlar">⚙</button></span></div>
+  <div id="hd"><button id="back" aria-label="Geri">←</button><b id="ttl">Termofer</b><span id="hdr"><button id="goMic" aria-label="Sesli komut">🎤</button><button id="goRep" aria-label="Raporlar">▥</button><button id="goSet" aria-label="Ayarlar">⚙</button></span></div>
 
   <div class="view" id="home">
     <div class="hname" id="hname">Termofer</div>
     <div class="pills"><div class="pill" id="pOut">☀ <span id="out">--</span></div><div class="pill" id="pDev"><span class="dot"></span><span id="devTxt">Cihaz</span></div></div>
+    <div id="vmsg" style="text-align:center;color:#fff;font-size:14px;min-height:1.3em"></div>
     <div class="card gauge" id="gauge">
       <svg viewBox="0 0 300 260"><path id="trk" fill="none" stroke="#eee" stroke-width="12" stroke-linecap="round"/><path id="prg" fill="none" stroke="#ff5733" stroke-width="12" stroke-linecap="round"/><circle id="tick" r="5" fill="#8a8f98"/><circle id="knob" r="15" fill="#e23d12" stroke="#fff" stroke-width="4"/></svg>
       <div class="gc"><div class="h" id="hum">--</div><div class="t" id="now">--</div><div class="g"><button id="minus" aria-label="Azalt">‹</button><span id="tgt">--</span><button id="plus" aria-label="Artır">›</button></div></div>
@@ -263,6 +265,50 @@ $("modes").onclick = e => {
 $("chips").onclick = e => {
   const k = e.target.closest("button")?.dataset.k; if (!k || cfg.mode !== "manual") return;
   cfg.preset = k; saveCfg({ preset: k }); setTarget(cfg.temps[k]); render();
+};
+
+/* ---------- Sesli komut ---------- */
+const TENS = { on: 10, yirmi: 20, otuz: 30 }, ONES = { bir: 1, iki: 2, "üç": 3, "dört": 4, "beş": 5, "altı": 6, yedi: 7, sekiz: 8, dokuz: 9 };
+const has = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
+function parseVoice(txt) {
+  txt = txt.toLocaleLowerCase("tr-TR").replace(/(\d)\s*,\s*(\d)/g, "$1.$2").replace(/(\d)\s*(nokta|virgül)\s*(\d)/g, "$1.$3");
+  if (/kapat|söndür|kapalı/.test(txt)) return { k: "off" };
+  let v = null; const m = txt.match(/\d{1,2}(\.\d)?/);
+  if (m) v = parseFloat(m[0]);
+  else { const w = txt.split(/\s+/); for (let i = 0; i < w.length; i++) if (has(TENS, w[i])) { v = TENS[w[i]]; if (has(ONES, w[i + 1])) v += ONES[w[i + 1]]; break; } }
+  if (v != null) { if (Number.isInteger(v) && /buçuk|yarım/.test(txt)) v += 0.5; return { k: "temp", v }; }
+  if (/(^|\s)(aç|çalıştır|başlat)(\s|$)/.test(txt)) return { k: "on" };
+  return null;
+}
+let vTimer;
+const vmsg = t => { $("vmsg").textContent = t; clearTimeout(vTimer); if (t) vTimer = setTimeout(() => $("vmsg").textContent = "", 6000); };
+function voiceDo(c) {
+  const btn = k => $("modes").querySelector(`[data-m="${k}"]`);
+  if (c.k === "off") { btn("off").click(); return vmsg("Kapatıldı"); }
+  if (c.k === "on") { if (!s.power) btn("manual").click(); return vmsg("Açıldı"); }
+  if (c.v < TMIN || c.v > TMAX) return vmsg(`${fmt(c.v)}° geçersiz. ${TMIN}-${TMAX} arası söyle.`);
+  if (!s.power) btn("manual").click();
+  setTarget(c.v);
+  vmsg(`Hedef ${fmt(Math.round(c.v / STEP) * STEP)}° ayarlandı`);
+}
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+const VERR = { "not-allowed": "Mikrofon izni verilmedi. Tarayıcı ayarlarından izin ver.", "service-not-allowed": "Mikrofon izni verilmedi. Tarayıcı ayarlarından izin ver.", "no-speech": "Ses duyulmadı, tekrar dene.", network: "Sesli komut için internet gerekli.", "audio-capture": "Mikrofon bulunamadı." };
+let rec = null;
+$("goMic").onclick = () => {
+  if (!SR) return vmsg("Bu tarayıcı sesli komutu desteklemiyor. Chrome'da aç.");
+  if (rec) return rec.stop();
+  rec = new SR(); rec.lang = "tr-TR"; rec.interimResults = false; rec.maxAlternatives = 3;
+  let done = false;
+  rec.onstart = () => { $("goMic").classList.add("rec"); vmsg("Dinliyorum… ör. 23 dereceye getir"); };
+  rec.onresult = e => {
+    done = true;
+    const alts = [...e.results[0]].map(a => a.transcript);
+    const c = alts.map(parseVoice).find(Boolean);
+    if (c) voiceDo(c); else vmsg(`Anlaşılmadı: "${alts[0]}"`);
+  };
+  rec.onerror = e => { done = true; vmsg(VERR[e.error] || "Ses hatası: " + e.error); };
+  rec.onend = () => { $("goMic").classList.remove("rec"); rec = null; if (!done) vmsg("Ses duyulmadı, tekrar dene."); };
+  try { rec.start(); } catch { rec = null; }
 };
 
 /* ---------- Haftalık program (uygulama açıkken uygulanır) ---------- */
