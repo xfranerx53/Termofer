@@ -269,7 +269,7 @@ function logSample() {
   const b = Math.floor(Date.now() / 600000);
   if (b === lastBucket || s.temp == null || !online()) return;
   lastBucket = b;
-  set(ref(db, "termofer/history/" + key(b)), { t: s.temp, h: s.hum ?? null, g: s.target }).catch(() => {});
+  set(ref(db, "termofer/history/" + key(b)), { t: s.temp, h: s.hum ?? null, g: s.target, o: s.heating && s.power ? 1 : 0 }).catch(() => {});
 }
 
 /* ---------- Çizim ---------- */
@@ -367,19 +367,21 @@ async function report() {
   } catch {}
   const T = rows.map(r => r.t).filter(v => v != null), H = rows.map(r => r.h).filter(v => v != null), O = outs.map(o => o.v);
   const card = (ic, n, a, u, arr) => `<div class="card"><span class="mu">${ic} ${n}</span><br><b>${a == null ? "--" : fmt(a)}</b> ${u}<small>Y:${arr.length ? fmt(Math.max(...arr)) : "--"} &nbsp; D:${arr.length ? fmt(Math.min(...arr)) : "--"}</small></div>`;
-  $("rstat").innerHTML = card("🏠", "İç Mekan", avg(T), "°C", T) + card("☀", "Dış Ortam", avg(O), "°C", O) + card("💧", "Nem", avg(H), "%", H);
+  const mins = rows.filter(r => r.o === 1).length * 10, hasO = rows.some(r => r.o != null);
+  const kombi = `<div class="card"><span class="mu">🔥 Kombi Çalışma</span><br><b>${!hasO ? "--" : mins >= 60 ? Math.floor(mins / 60) + " sa " + (mins % 60) + " dk" : mins + " dk"}</b><small>Kayıtlı verilere göre</small></div>`;
+  $("rstat").innerHTML = card("🏠", "İç Mekan", avg(T), "°C", T) + card("☀", "Dış Ortam", avg(O), "°C", O) + card("💧", "Nem", avg(H), "%", H) + kombi;
   $("chart").innerHTML = chart(rows, outs, from, end);
   $("rnote").textContent = lat == null ? "Dış sıcaklık için Ev Ayarları'ndan konumu seç. " : "";
   $("rnote").textContent += "İç sıcaklık kayıtları uygulama açıkken alınır.";
 }
 function chart(rows, outs, from, end) {
-  const W = 320, H = 170, p = 28, a = rows.map(r => r.t), b = outs.map(o => o.v), all = [...a, ...b];
+  const W = 320, H = 170, p = 28, a = rows.map(r => r.t), b = outs.map(o => o.v), all = [...a, ...b, ...rows.map(r => r.g).filter(v => v != null)];
   if (all.length < 2) return `<p class="mu" style="padding:30px 0;text-align:center">Bu aralıkta veri yok.</p>`;
   const lo = Math.floor(Math.min(...all) - 1), hi = Math.ceil(Math.max(...all) + 1);
   const X = t => p + (t - from) / (end - from) * (W - p - 6), Y = v => H - 18 - (v - lo) / (hi - lo) * (H - 28);
   const line = (arr, col) => arr.length > 1 ? `<polyline fill="none" stroke="${col}" stroke-width="2" points="${arr.map(([t, v]) => X(t).toFixed(1) + "," + Y(v).toFixed(1)).join(" ")}"/>` : "";
   const fm = t => new Date(t).toLocaleString("tr-TR", end - from > 864e5 ? { day: "2-digit", month: "2-digit" } : { hour: "2-digit", minute: "2-digit" });
-  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%"><text x="2" y="${Y(hi) + 8}" font-size="10" fill="#888">${hi}°</text><text x="2" y="${Y(lo)}" font-size="10" fill="#888">${lo}°</text><line x1="${p}" x2="${p}" y1="8" y2="${H - 18}" stroke="#bbb"/><line x1="${p}" x2="${W - 6}" y1="${H - 18}" y2="${H - 18}" stroke="#bbb"/>${line(outs.map(o => [o.ts, o.v]), "#f2994a")}${line(rows.map(r => [r.ts, r.t]), "#e5484d")}<text x="${p}" y="${H - 4}" font-size="10" fill="#888">${fm(from)}</text><text x="${W - 6}" y="${H - 4}" font-size="10" fill="#888" text-anchor="end">${fm(end)}</text></svg><p class="mu"><span style="color:#e5484d">■</span> İç &nbsp; <span style="color:#f2994a">■</span> Dış</p>`;
+  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%"><text x="2" y="${Y(hi) + 8}" font-size="10" fill="#888">${hi}°</text><text x="2" y="${Y(lo)}" font-size="10" fill="#888">${lo}°</text><line x1="${p}" x2="${p}" y1="8" y2="${H - 18}" stroke="#bbb"/><line x1="${p}" x2="${W - 6}" y1="${H - 18}" y2="${H - 18}" stroke="#bbb"/>${line(rows.filter(r => r.g != null).map(r => [r.ts, r.g]), "#555").replace("<polyline", '<polyline stroke-dasharray="6 5"')}${line(outs.map(o => [o.ts, o.v]), "#f2994a")}${line(rows.map(r => [r.ts, r.t]), "#e5484d")}<text x="${p}" y="${H - 4}" font-size="10" fill="#888">${fm(from)}</text><text x="${W - 6}" y="${H - 4}" font-size="10" fill="#888" text-anchor="end">${fm(end)}</text></svg><p class="mu"><span style="color:#e5484d">■</span> İç &nbsp; <span style="color:#f2994a">■</span> Dış &nbsp; <span style="color:#555">╌</span> Hedef</p>`;
 }
 
 if ("serviceWorker" in navigator) addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));
