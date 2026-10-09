@@ -112,7 +112,7 @@ input,select{font:inherit;font-size:16px;color:var(--tx);background:#fff;border:
 
   <div class="view sub" id="prog" hidden><div class="card"><p class="mu">Hazır programlardan birini seçin. Program, uygulama açıkken uygulanır.</p><div id="plist"></div></div><button class="btn" id="saveP">Kaydet</button></div>
 
-  <div class="view sub" id="homeset" hidden><div class="card" style="display:flex;flex-direction:column;gap:12px"><b>Evin İsmi ve Yeri</b><input id="hn" placeholder="Ev adı"><button class="btn" id="loc" style="background:#2f80ed">Konumumu kullan</button><div class="mu" id="locTxt">Konum seçilmedi</div></div><button class="btn" id="saveH">Kaydet</button></div>
+  <div class="view sub" id="homeset" hidden><div class="card" style="display:flex;flex-direction:column;gap:12px"><b>Evin İsmi ve Yeri</b><input id="hn" placeholder="Ev adı"><input id="adr" placeholder="Şehir veya ilçe (ör. Kadıköy)"><button class="btn" id="srch" style="background:#2f80ed">Adresi ara</button><div id="res"></div><button class="btn" id="loc" style="background:#2f80ed">Konumumu kullan</button><div class="mu" id="locTxt">Konum seçilmedi</div></div><button class="btn" id="saveH">Kaydet</button></div>
 
   <div class="view sub" id="dev" hidden><div class="card" id="devInfo"></div></div>
 
@@ -335,10 +335,26 @@ function progView() {
 $("saveP").onclick = () => { cfg.prog = pSel; saveCfg({ prog: pSel }); applyProgram(true); go("menu"); };
 
 let hPos = {};
-function homeView() { hPos = { lat: cfg.home.lat, lon: cfg.home.lon }; $("hn").value = cfg.home.name || ""; locTxt(); }
-const locTxt = () => $("locTxt").textContent = hPos.lat == null ? "Konum seçilmedi" : `Konum: ${hPos.lat.toFixed(3)}, ${hPos.lon.toFixed(3)}`;
-$("loc").onclick = () => navigator.geolocation?.getCurrentPosition(p => { hPos = { lat: p.coords.latitude, lon: p.coords.longitude }; locTxt(); }, () => $("locTxt").textContent = "Konum alınamadı. Tarayıcıda konum iznini aç.");
-$("saveH").onclick = () => { const h = { name: $("hn").value.trim(), lat: hPos.lat ?? null, lon: hPos.lon ?? null }; cfg.home = h; saveCfg({ home: h }); fetchOut(); go("menu"); };
+function homeView() { hPos = { lat: cfg.home.lat, lon: cfg.home.lon, place: cfg.home.place }; $("res").innerHTML = ""; $("adr").value = ""; $("hn").value = cfg.home.name || ""; locTxt(); }
+const locTxt = () => $("locTxt").textContent = hPos.lat == null ? "Konum seçilmedi" : `Konum: ${hPos.place || hPos.lat.toFixed(3) + ", " + hPos.lon.toFixed(3)}`;
+$("loc").onclick = () => navigator.geolocation?.getCurrentPosition(p => { hPos = { lat: p.coords.latitude, lon: p.coords.longitude, place: "" }; locTxt(); }, () => $("locTxt").textContent = "Konum alınamadı. Tarayıcıda konum iznini aç.");
+let found = [];
+$("srch").onclick = async () => {
+  const q = $("adr").value.split(",")[0].trim(); if (!q) return;
+  $("res").innerHTML = '<p class="mu">Aranıyor…</p>';
+  try {
+    const r = await (await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(q)}&count=5&language=tr&format=json`)).json();
+    found = r.results || [];
+    $("res").innerHTML = found.length ? found.map((f, i) => `<button class="btn" data-i="${i}" style="background:#fff;color:var(--tx);border:1px solid var(--ln);margin-top:8px;text-align:left;font-weight:600">${[f.name, f.admin2, f.admin1, f.country].filter(Boolean).join(", ")}</button>`).join("") : '<p class="mu">Sonuç yok. Sadece şehir veya ilçe adı dene.</p>';
+  } catch { $("res").innerHTML = '<p class="mu">Arama yapılamadı. İnterneti kontrol et.</p>'; }
+};
+$("res").onclick = e => {
+  const f = found[e.target.closest("button")?.dataset.i]; if (!f) return;
+  hPos = { lat: f.latitude, lon: f.longitude, place: [f.name, f.admin1].filter(Boolean).join(", ") };
+  if (!$("hn").value.trim()) $("hn").value = f.name;
+  $("res").innerHTML = ""; locTxt();
+};
+$("saveH").onclick = () => { const h = { name: $("hn").value.trim(), lat: hPos.lat ?? null, lon: hPos.lon ?? null, place: hPos.place || "" }; cfg.home = h; saveCfg({ home: h }); fetchOut(); go("menu"); };
 
 function devInfo() {
   const on = online(), age = s.lastSeen ? Math.max(0, Math.round(Date.now() / 1000 - s.lastSeen)) : null;
@@ -372,7 +388,7 @@ async function report() {
   $("rstat").innerHTML = card("🏠", "İç Mekan", avg(T), "°C", T) + card("☀", "Dış Ortam", avg(O), "°C", O) + card("💧", "Nem", avg(H), "%", H) + kombi;
   $("chart").innerHTML = chart(rows, outs, from, end);
   $("rnote").textContent = lat == null ? "Dış sıcaklık için Ev Ayarları'ndan konumu seç. " : "";
-  $("rnote").textContent += "İç sıcaklık kayıtları uygulama açıkken alınır.";
+  $("rnote").textContent += "Kayıtlar uygulama açıkken 10 dakikada bir alınır.";
 }
 function chart(rows, outs, from, end) {
   const W = 320, H = 170, p = 28, a = rows.map(r => r.t), b = outs.map(o => o.v), all = [...a, ...b, ...rows.map(r => r.g).filter(v => v != null)];
