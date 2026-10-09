@@ -147,7 +147,7 @@ const PROGS = {
 };
 const s = { target: 21, power: true, heating: false, temp: null, hum: null, lastSeen: 0 };
 const cfg = { mode: "manual", preset: "ev", prog: "tasarruf", temps: { ev: 22, uyku: 20, disari: 18, kullanici: 21 }, home: {} };
-let editUntil = 0, netOk = true, unsub = [], timer, outT = null, lastBucket = 0, view = "home";
+let editUntil = 0, lastDb = {}, pend = null, ready = { t: false, c: false }, netOk = true, unsub = [], timer, outT = null, lastBucket = 0, view = "home";
 
 /* ---------- Giriş ---------- */
 const store = {
@@ -178,12 +178,15 @@ $("logout").onclick = () => signOut(auth);
 
 onAuthStateChanged(auth, user => {
   $("login").hidden = !!user; $("app").hidden = !user;
-  unsub.forEach(f => f()); unsub = [];
+  unsub.forEach(f => f()); unsub = []; ready = { t: false, c: false };
   if (!user) return;
   go("home");
   unsub.push(onValue(ref(db, "thermostat"), snap => {
     const v = snap.val() || {};
+    lastDb = { t: v.targetTemp, p: v.power };
     if (Date.now() > editUntil) {
+      // Cihazdan (tuş) hedef değişti: program modunda isek manuele geç, program geri almasın
+      if (ready.t && ready.c && cfg.mode === "program" && typeof v.targetTemp === "number" && v.targetTemp !== s.target) { cfg.mode = "manual"; saveCfg({ mode: "manual" }); }
       if (typeof v.targetTemp === "number") s.target = v.targetTemp;
       if (typeof v.power === "boolean") s.power = v.power;
     }
@@ -191,13 +194,13 @@ onAuthStateChanged(auth, user => {
     s.temp = typeof v.currentTemp === "number" ? v.currentTemp : null;
     s.hum = typeof v.humidity === "number" ? v.humidity : null;
     s.lastSeen = v.lastSeen || 0;
-    logSample(); applyProgram(); render();
+    ready.t = true; reconcile(); logSample(); applyProgram(); render();
   }, e => toast("Veri okunamadı: " + e.code)));
   unsub.push(onValue(ref(db, "termofer"), snap => {
     const v = snap.val() || {};
     cfg.mode = v.mode || "manual"; cfg.preset = v.preset || "ev"; cfg.prog = v.prog || "tasarruf";
     cfg.temps = { ...cfg.temps, ...(v.temps || {}) }; cfg.home = v.home || {};
-    fetchOut(); applyProgram(); render();
+    ready.c = true; reconcile(); fetchOut(); applyProgram(); render();
   }));
   unsub.push(onValue(ref(db, ".info/connected"), c => { netOk = !!c.val(); render(); }));
 });
@@ -205,7 +208,30 @@ onAuthStateChanged(auth, user => {
 /* ---------- Komut ---------- */
 function push() {
   clearTimeout(timer);
-  timer = setTimeout(() => update(ref(db, "thermostat"), { targetTemp: s.target, power: s.power }).then(() => toast("")).catch(e => toast("Gönderilemedi: " + e.code)), 400);
+  if (!pend) pend = { t: lastDb.t, p: lastDb.p, n: 0 };   // değişiklikten önceki değeri hatırla
+  timer = setTimeout(send, 400);
+}
+function send() {
+  const t = s.target, p = s.power;
+  update(ref(db, "thermostat"), { targetTemp: t, power: p })
+    .then(() => { toast(""); setTimeout(() => verify(t, p), 5000); })
+    .catch(e => toast("Gönderilemedi: " + e.code));
+}
+// Cihaz eski değeri geri yazdıysa (yarış durumu) değişikliği en fazla 2 kez yeniden gönder
+async function verify(t, p) {
+  if (t !== s.target || p !== s.power) return;            // araya yeni değişiklik girmiş
+  try {
+    const v = (await get(ref(db, "thermostat"))).val() || {};
+    if (v.targetTemp === t && v.power === p) { pend = null; return; }
+    if (pend && v.targetTemp === pend.t && v.power === pend.p && pend.n < 2) { pend.n++; editUntil = Date.now() + 3000; send(); }
+    else pend = null;                                     // başka biri (cihaz) değiştirmiş: dokunma
+  } catch { pend = null; }
+}
+// Güç/mod tutarlılığı: cihazdan açma-kapama yapılınca uygulamadaki mod da uyar
+function reconcile() {
+  if (!(ready.t && ready.c) || Date.now() <= editUntil) return;
+  if (!s.power && cfg.mode !== "off") { cfg.mode = "off"; saveCfg({ mode: "off" }); }
+  else if (s.power && cfg.mode === "off") { cfg.mode = "manual"; saveCfg({ mode: "manual" }); }
 }
 const saveCfg = o => update(ref(db, "termofer"), o).catch(e => toast("Kaydedilemedi: " + e.code));
 function setTarget(v, userEdit = true) {
@@ -249,7 +275,7 @@ function progMode(d = new Date()) {
 function applyProgram(force) {
   if (cfg.mode !== "program" || !s.power) return;
   const t = cfg.temps[progMode()];
-  if (t != null && t !== s.target && (force || Date.now() > editUntil)) { s.target = t; push(); }
+  if (t != null && t !== s.target && (force || Date.now() > editUntil)) { s.target = t; editUntil = Date.now() + 3000; push(); }
 }
 setInterval(() => { applyProgram(); render(); }, 30000);
 
@@ -293,7 +319,7 @@ function render() {
   $("now").textContent = s.temp == null ? "--" : fmt(s.temp) + "°";
   $("hum").textContent = s.hum == null ? "" : "%" + fmt(s.hum, 0);
   $("tgt").textContent = s.power ? fmt(s.target) + "°" : "Kapalı";
-  $("modes").querySelectorAll("button").forEach(b => b.classList.toggle("a", (cfg.mode === "off" || !s.power ? "off" : cfg.mode) === b.dataset.m));
+  $("modes").querySelectorAll("button").forEach(b => b.classList.toggle("a", (!s.power ? "off" : cfg.mode === "off" ? "manual" : cfg.mode) === b.dataset.m));
   const cur = cfg.mode === "program" ? progMode() : cfg.preset;
   $("chips").innerHTML = s.power ? Object.entries(MODES).map(([k, [i, n]]) => `<button data-k="${k}" class="${k === cur ? "a" : ""}"><span>${i}</span>${n}</button>`).join("") : "";
   $("chips").hidden = !s.power;
