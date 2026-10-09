@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#10151b">
+<meta name="theme-color" content="#ff5733">
 <title>Termofer</title>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" type="image/png" href="favicon.png">
@@ -13,223 +13,143 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Termofer">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;600;800&display=swap" rel="stylesheet">
 <style>
-:root{
-  --bg:#10151b; --surface:#182029; --line:#26323d; --text:#e8edf2; --muted:#8a98a6;
-  --cool:#7fb3d5; --heat:#ff8f3a; --off:#4a5560; --danger:#ff6b6b;
-  --font:"Figtree",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
-}
-@media (prefers-color-scheme:light){
-  :root:not([data-theme="dark"]){
-    --bg:#eef2f5; --surface:#fff; --line:#d5dde4; --text:#17202a; --muted:#5d6b78;
-    --cool:#2f7fb0; --heat:#e8741c; --off:#aab4be; --danger:#c93a3a;
-  }
-}
+:root{--o:#ff5733;--o2:#e23d12;--bg:#e5e7ec;--tx:#17202a;--mu:#7b8794;--ln:#dde1e7;--ok:#4cc38a;--bad:#e5484d;font-family:Figtree,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
 *{box-sizing:border-box;margin:0}
 html,body{height:100%}
-body{
-  background:var(--bg);color:var(--text);font-family:var(--font);
-  padding:env(safe-area-inset-top,0) 16px env(safe-area-inset-bottom,0);
-  display:flex;justify-content:center;
-  -webkit-tap-highlight-color:transparent;
-}
-main{width:100%;max-width:420px;padding:20px 0 32px;display:flex;flex-direction:column;gap:20px}
+body{background:var(--o);color:var(--tx);padding:env(safe-area-inset-top,0) 0 env(safe-area-inset-bottom,0);-webkit-tap-highlight-color:transparent}
 [hidden]{display:none!important}
-button{font:inherit;color:inherit;cursor:pointer;border:0;background:none}
-:focus-visible{outline:2px solid var(--cool);outline-offset:3px}
-
+button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
+input,select{font:inherit;font-size:16px;color:var(--tx);background:#fff;border:1px solid var(--ln);border-radius:12px;padding:13px 14px;width:100%}
+.card{background:#fff;border-radius:22px;padding:16px 18px}
+.btn{background:var(--o);color:#fff;font-weight:800;padding:15px;border-radius:30px;width:100%;letter-spacing:.03em}
+.btn:disabled{opacity:.5}
+.err{color:var(--bad);font-size:14px;min-height:1.2em}
+.mu{color:var(--mu);font-size:14px}
 /* giriş */
-#login{margin:auto 0;display:flex;flex-direction:column;gap:14px}
-#login h1{font-size:28px;font-weight:800;letter-spacing:-.02em}
-#login p{color:var(--muted);font-size:15px}
-input{
-  font:inherit;font-size:16px;color:var(--text);background:var(--surface);border:1px solid var(--line);
-  border-radius:12px;padding:14px 16px;width:100%;
-  -webkit-appearance:none;appearance:none;
-  -webkit-user-select:text;user-select:text;pointer-events:auto;
-}
-.pwrow{position:relative}
-.pwrow input{padding-right:84px}
-.eye{position:absolute;right:6px;top:50%;transform:translateY(-50%);padding:8px 10px;font-size:14px;color:var(--muted)}
-#login form{display:flex;flex-direction:column;gap:14px}
-.primary{background:var(--heat);color:#1a0f05;font-weight:600;padding:14px;border-radius:12px}
-.err{color:var(--danger);font-size:14px;min-height:1.2em}
-.field{display:flex;align-items:center;gap:12px}
-.field>.pwrow,.field>input{flex:1;min-width:0}
-.chk{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted);cursor:pointer;white-space:nowrap}
-.chk input{width:20px;height:20px;padding:0;border-radius:6px;accent-color:var(--heat);-webkit-appearance:auto;appearance:auto}
-
-/* üst çubuk */
-header{display:flex;align-items:center;justify-content:space-between;gap:12px}
-.status{display:flex;align-items:center;gap:8px;font-size:14px;color:var(--muted)}
-.dot{width:9px;height:9px;border-radius:50%;background:var(--off)}
-.status.on .dot{background:#4cc38a}
-.status.bad .dot{background:var(--danger)}
-.link{font-size:14px;color:var(--muted);padding:6px 4px}
-
-/* kadran */
-.dialwrap{position:relative;width:100%;aspect-ratio:1;touch-action:none;user-select:none}
-svg{width:100%;height:100%;display:block;overflow:visible}
-.track{stroke:var(--line)}
-.prog{stroke:var(--cool);transition:stroke .4s}
-.knob{fill:var(--text);stroke:var(--bg);stroke-width:4;cursor:grab}
-.tick{fill:var(--muted)}
-.glow{fill:none;stroke:var(--heat);opacity:0;filter:blur(14px);transition:opacity .6s}
-.heating .prog{stroke:var(--heat)}
-.heating .glow{opacity:.55;animation:breathe 3.2s ease-in-out infinite}
-.off .prog{stroke:var(--off)}
-.off .knob{fill:var(--off)}
-@keyframes breathe{50%{opacity:.25}}
-.center{
-  position:absolute;inset:0;display:flex;flex-direction:column;
-  align-items:center;justify-content:center;gap:2px;pointer-events:none;text-align:center;
-}
-.now{font-size:clamp(56px,20vw,84px);font-weight:800;letter-spacing:-.04em;line-height:1;font-variant-numeric:tabular-nums}
-.now small{font-size:.38em;font-weight:600;color:var(--muted);letter-spacing:0;margin-left:2px}
-.state{font-size:15px;font-weight:600;color:var(--muted);margin-top:6px}
-.heating .state{color:var(--heat)}
-.tgt{font-size:14px;color:var(--muted);font-variant-numeric:tabular-nums}
-.stale .now{opacity:.45}
-
-/* kontroller */
-.controls{display:flex;align-items:center;justify-content:center;gap:18px;margin-top:-34px}
-.round{
-  width:68px;height:68px;border-radius:50%;background:var(--surface);border:1px solid var(--line);
-  font-size:30px;font-weight:600;display:grid;place-items:center;transition:transform .12s;
-}
-.round:active{transform:scale(.93)}
-.pwr{width:84px;height:84px;font-size:15px;font-weight:600}
-.pwr.on{background:var(--heat);border-color:var(--heat);color:#1a0f05}
-.info{
-  display:flex;justify-content:space-between;background:var(--surface);
-  border:1px solid var(--line);border-radius:16px;padding:14px 18px;font-size:15px;
-}
-.info b{font-variant-numeric:tabular-nums}
-.info span{color:var(--muted)}
-.toast{text-align:center;font-size:14px;color:var(--danger);min-height:1.2em}
-@media (prefers-reduced-motion:reduce){.heating .glow{animation:none;opacity:.4}*{transition:none!important}}
+#login{min-height:100%;display:flex;flex-direction:column;justify-content:center;gap:18px;padding:24px;max-width:440px;margin:auto}
+#login h1{color:#fff;font-size:34px;font-weight:800;text-align:center}
+#loginForm{display:flex;flex-direction:column;gap:14px}
+.field{display:flex;align-items:center;gap:10px}.field>*:first-child{flex:1;min-width:0}
+.pw{position:relative}.pw input{padding-right:70px}.eye{position:absolute;right:6px;top:50%;transform:translateY(-50%);padding:8px;font-size:13px;color:var(--mu)}
+.chk{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--mu);white-space:nowrap}
+.chk input{width:20px;height:20px;padding:0;accent-color:var(--o)}
+/* uygulama */
+#app{max-width:440px;margin:auto;min-height:100%;display:flex;flex-direction:column}
+#hd{display:flex;align-items:center;justify-content:space-between;height:56px;padding:0 14px;color:#fff;background:var(--o);position:sticky;top:0;z-index:2}
+#hd b{font-size:19px;font-weight:800;letter-spacing:.04em}
+#hd button{width:40px;height:40px;font-size:22px;color:#fff}
+.view{flex:1;padding:14px;display:flex;flex-direction:column;gap:12px}
+.sub{background:var(--bg);min-height:calc(100vh - 56px)}
+#home{background:var(--o)}
+.hname{text-align:center;color:#fff;font-weight:800;letter-spacing:.08em;text-transform:uppercase;margin-top:6px}
+.pills{display:flex;gap:10px;justify-content:center}
+.pill{display:flex;align-items:center;gap:6px;border:1px solid #fff;border-radius:20px;padding:7px 14px;color:#fff;font-weight:600;font-size:15px}
+.dot{width:10px;height:10px;border-radius:50%;background:#bbb}.on .dot,.dot.on{background:var(--ok)}.bad .dot{background:var(--bad)}
+.gauge{position:relative;padding:8px 8px 20px;margin-top:6px}
+.gauge svg{width:100%;display:block}
+.gc{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;padding-top:10px}
+.gc .h{font-weight:800;font-size:22px}.gc .t{font-size:72px;font-weight:800;line-height:1}.stale .t{opacity:.4}
+.gc .g{display:flex;align-items:center;gap:22px;color:#8a8f98;font-size:34px;font-weight:600;margin-top:4px}
+.gc .g button{font-size:34px;color:#8a8f98;padding:4px 10px}
+.modes{display:flex;justify-content:space-around;background:#fff;border-radius:18px;padding:10px 4px}
+.modes button{display:flex;flex-direction:column;align-items:center;gap:3px;font-size:12px;font-weight:800;color:#8a8f98;letter-spacing:.04em;padding:6px 10px}
+.modes button span{font-size:26px}.modes .a{color:var(--o)}
+.chips{display:flex;justify-content:space-around;background:#fff;border-radius:18px;padding:10px 4px}
+.chips button{font-size:12px;font-weight:800;color:var(--mu);display:flex;flex-direction:column;align-items:center;gap:2px;padding:4px 8px;border-radius:12px}
+.chips span{font-size:24px}.chips .a{color:var(--o);background:#fff1ed}
+.menu button{display:flex;justify-content:space-between;width:100%;background:#fff;border-radius:16px;padding:18px;font-weight:800;letter-spacing:.03em;margin-bottom:10px}
+.row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 0;font-weight:600}
+.row .st{display:flex;align-items:center;gap:8px;font-size:26px;font-weight:600;color:#8a8f98}
+.row .st button{font-size:28px;color:#8a8f98;padding:2px 10px}
+.opt{display:flex;gap:12px;padding:10px 0;align-items:flex-start}.opt input{width:22px;height:22px;accent-color:var(--o);padding:0;margin-top:2px}
+.tabs{display:flex;gap:6px;background:var(--bg);border-radius:12px;padding:4px}
+.tabs button{flex:1;padding:9px;border-radius:9px;font-weight:600;color:var(--mu)}.tabs .a{background:#2f80ed;color:#fff}
+.stat{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.stat .card b{font-size:34px;font-weight:800}.stat small{display:block;color:var(--mu)}
 </style>
 </head>
 <body>
-<main>
-
-<!-- Giriş -->
 <section id="login">
   <h1>Termofer</h1>
-  <p>Devam etmek için giriş yap.</p>
-  <form id="loginForm" novalidate>
-    <div class="field">
-      <input id="email" type="email" inputmode="email" placeholder="E-posta" autocomplete="username" autocapitalize="off" autocorrect="off" spellcheck="false">
-      <label class="chk"><input type="checkbox" id="remEmail">Hatırla</label>
-    </div>
-    <div class="field">
-      <div class="pwrow">
-        <input id="pass" type="password" placeholder="Şifre" autocomplete="current-password" autocapitalize="off" autocorrect="off" spellcheck="false">
-        <button type="button" class="eye" id="eye">Göster</button>
-      </div>
-      <label class="chk"><input type="checkbox" id="remPass">Hatırla</label>
-    </div>
-    <button type="submit" class="primary" id="loginBtn">Giriş yap</button>
+  <form id="loginForm" class="card" novalidate>
+    <div class="field"><input id="email" type="email" inputmode="email" placeholder="E-posta" autocomplete="username" autocapitalize="off" spellcheck="false"><label class="chk"><input type="checkbox" id="remEmail">Hatırla</label></div>
+    <div class="field"><div class="pw"><input id="pass" type="password" placeholder="Şifre" autocomplete="current-password" autocapitalize="off" spellcheck="false"><button type="button" class="eye" id="eye">Göster</button></div><label class="chk"><input type="checkbox" id="remPass">Hatırla</label></div>
+    <button type="submit" class="btn" id="loginBtn">Giriş yap</button>
     <div class="err" id="loginErr" role="alert"></div>
   </form>
 </section>
 
-<!-- Ana ekran -->
-<section id="app" hidden style="display:flex;flex-direction:column;gap:20px">
-  <header>
-    <div class="status" id="status"><span class="dot"></span><span id="statusTxt">Bağlanıyor…</span></div>
-    <button class="link" id="logout">Çıkış yap</button>
-  </header>
+<section id="app" hidden>
+  <div id="hd"><button id="back" aria-label="Geri">←</button><b id="ttl">Termofer</b><span id="hdr"><button id="goRep" aria-label="Raporlar">▥</button><button id="goSet" aria-label="Ayarlar">⚙</button></span></div>
 
-  <div class="dialwrap" id="dial">
-    <svg viewBox="0 0 300 300" aria-hidden="true">
-      <path id="glow" class="glow" stroke-width="14" stroke-linecap="round"/>
-      <path id="track" class="track" fill="none" stroke-width="14" stroke-linecap="round"/>
-      <path id="prog" class="prog" fill="none" stroke-width="14" stroke-linecap="round"/>
-      <circle id="tick" class="tick" r="5"/>
-      <circle id="knob" class="knob" r="14"/>
-    </svg>
-    <div class="center">
-      <div class="now" id="now">--</div>
-      <div class="state" id="state">—</div>
-      <div class="tgt" id="tgt"></div>
+  <div class="view" id="home">
+    <div class="hname" id="hname">Termofer</div>
+    <div class="pills"><div class="pill" id="pOut">☀ <span id="out">--</span></div><div class="pill" id="pDev"><span class="dot"></span><span id="devTxt">Cihaz</span></div></div>
+    <div class="card gauge" id="gauge">
+      <svg viewBox="0 0 300 260"><path id="trk" fill="none" stroke="#eee" stroke-width="12" stroke-linecap="round"/><path id="prg" fill="none" stroke="#ff5733" stroke-width="12" stroke-linecap="round"/><circle id="knob" r="14" fill="#e23d12"/></svg>
+      <div class="gc"><div class="h" id="hum">--</div><div class="t" id="now">--</div><div class="g"><button id="minus" aria-label="Azalt">‹</button><span id="tgt">--</span><button id="plus" aria-label="Artır">›</button></div></div>
     </div>
+    <div class="chips" id="chips"></div>
+    <div class="modes" id="modes">
+      <button data-m="program"><span>🗓</span>HAFTALIK PROGRAM</button>
+      <button data-m="manual"><span>☝</span>MANUEL</button>
+      <button data-m="off"><span>⏻</span>KAPALI</button>
+    </div>
+    <div class="err" id="toast" style="text-align:center;color:#fff"></div>
   </div>
 
-  <div class="controls">
-    <button class="round" id="minus" aria-label="Hedefi 0,5 derece düşür">−</button>
-    <button class="round pwr" id="power" aria-label="Aç / kapat">Aç</button>
-    <button class="round" id="plus" aria-label="Hedefi 0,5 derece artır">+</button>
+  <div class="view sub menu" id="menu" hidden>
+    <button data-go="temps">Sıcaklık Ayarları <i>›</i></button>
+    <button data-go="prog">Haftalık Program Ayarları <i>›</i></button>
+    <button data-go="homeset">Ev Ayarları <i>›</i></button>
+    <button data-go="dev">Cihaz Bilgileri <i>›</i></button>
+    <button id="logout" style="color:var(--bad)">Çıkış yap</button>
   </div>
 
-  <div class="info">
-    <div><span>Nem </span><b id="hum">--</b></div>
-    <div><span>Son veri </span><b id="seen">--</b></div>
+  <div class="view sub" id="temps" hidden><div class="card"><p class="mu">Tüm modların hedef sıcaklıklarını buradan ayarlayabilirsiniz.</p><div id="tlist"></div></div><button class="btn" id="saveT">Kaydet</button></div>
+
+  <div class="view sub" id="prog" hidden><div class="card"><p class="mu">Hazır programlardan birini seçin. Program, uygulama açıkken uygulanır.</p><div id="plist"></div></div><button class="btn" id="saveP">Kaydet</button></div>
+
+  <div class="view sub" id="homeset" hidden><div class="card" style="display:flex;flex-direction:column;gap:12px"><b>Evin İsmi ve Yeri</b><input id="hn" placeholder="Ev adı"><button class="btn" id="loc" style="background:#2f80ed">Konumumu kullan</button><div class="mu" id="locTxt">Konum seçilmedi</div></div><button class="btn" id="saveH">Kaydet</button></div>
+
+  <div class="view sub" id="dev" hidden><div class="card" id="devInfo"></div></div>
+
+  <div class="view sub" id="rep" hidden>
+    <div class="card"><div class="tabs" id="rtabs"><button data-r="0" class="a">Günlük</button><button data-r="1">Haftalık</button><button data-r="2">Aylık</button></div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px"><button id="rp" style="font-size:24px;color:#2f80ed;padding:0 12px">‹</button><b id="rl">Bugün</b><button id="rn" style="font-size:24px;color:#2f80ed;padding:0 12px">›</button></div></div>
+    <div class="stat" id="rstat"></div>
+    <div class="card"><b>Telemetri Verileri</b><div id="chart"></div><p class="mu" id="rnote"></p></div>
   </div>
-  <div class="toast" id="toast"></div>
 </section>
-
-</main>
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut,
-  setPersistence, browserLocalPersistence, browserSessionPersistence }
-  from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-import { getDatabase, ref, onValue, update }
-  from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut, setPersistence, browserLocalPersistence, browserSessionPersistence } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+import { getDatabase, ref, onValue, update, set, get, query, orderByKey, startAt, endAt } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
 
-// ---- AYAR: Firebase Console > Proje ayarları > Web uygulaması'ndan al ----
 const firebaseConfig = {
   apiKey: "AIzaSyBQFYdIPW_HBE0qvQOP5MQNF-n27nK7Ozw",
   authDomain: "termostat-50c8f.firebaseapp.com",
   databaseURL: "https://termostat-50c8f-default-rtdb.firebaseio.com",
   projectId: "termostat-50c8f",
 };
-const TMIN = 10, TMAX = 30, STEP = 0.5, OFFLINE_SEC = 60;
-
+const TMIN = 10, TMAX = 30, STEP = 0.5, OFFLINE = 60;
 const $ = id => document.getElementById(id);
 const fmt = (n, d = 1) => Number(n).toLocaleString("tr-TR", { minimumFractionDigits: d, maximumFractionDigits: d });
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app), db = getDatabase(app);
-
+const app = initializeApp(firebaseConfig), auth = getAuth(app), db = getDatabase(app);
+const MODES = { ev: ["🏠", "EV"], uyku: ["🌙", "UYKU"], disari: ["🚶", "DIŞARI"], kullanici: ["👤", "KULLANICI"] };
+const PROGS = {
+  tasarruf: ["Tasarruf Modu", "Hafta içi 0-7 Uyku, 7-18 Dışarı, 18-24 Ev. Haftasonu 0-9 Uyku, 9-24 Ev", { wd: [[0, "uyku"], [7, "disari"], [18, "ev"]], we: [[0, "uyku"], [9, "ev"]] }],
+  is: ["İş Modu", "Hafta içi 0-7 Uyku, 7-9 Ev, 9-18 Dışarı, 18-24 Ev. Haftasonu 0-9 Uyku, 9-24 Ev", { wd: [[0, "uyku"], [7, "ev"], [9, "disari"], [18, "ev"]], we: [[0, "uyku"], [9, "ev"]] }],
+  konfor: ["Konfor Modu", "Tüm günler 0-7 Uyku, 7-24 Ev", { wd: [[0, "uyku"], [7, "ev"]], we: [[0, "uyku"], [7, "ev"]] }],
+};
 const s = { target: 21, power: true, heating: false, temp: null, hum: null, lastSeen: 0 };
-let editUntil = 0, netOk = true, unsub = null, timer;
+const cfg = { mode: "manual", preset: "ev", prog: "tasarruf", temps: { ev: 22, uyku: 20, disari: 18, kullanici: 21 }, home: {} };
+let editUntil = 0, netOk = true, unsub = [], timer, outT = null, lastBucket = 0, view = "home";
 
 /* ---------- Giriş ---------- */
-onAuthStateChanged(auth, user => {
-  $("login").hidden = !!user;
-  $("app").hidden = !user;
-  if (unsub) { unsub(); unsub = null; }
-  if (user) {
-    unsub = onValue(ref(db, "thermostat"), snap => {
-      const v = snap.val() || {};
-      if (Date.now() > editUntil) {           // kullanıcı ayar yaparken uzaktan gelen değeri ezme
-        if (typeof v.targetTemp === "number") s.target = v.targetTemp;
-        if (typeof v.power === "boolean") s.power = v.power;
-      }
-      s.heating = !!v.heating;
-      s.temp = typeof v.currentTemp === "number" ? v.currentTemp : null;
-      s.hum = typeof v.humidity === "number" ? v.humidity : null;
-      s.lastSeen = v.lastSeen || 0;
-      render();
-    }, e => toast("Veri okunamadı: " + e.code));
-    onValue(ref(db, ".info/connected"), c => { netOk = !!c.val(); render(); });
-  }
-});
-const AUTH_ERR = {
-  "auth/invalid-credential": "E-posta veya şifre hatalı.",
-  "auth/invalid-email": "E-posta adresi geçersiz.",
-  "auth/user-not-found": "Bu e-posta ile kullanıcı yok.",
-  "auth/wrong-password": "Şifre hatalı.",
-  "auth/operation-not-allowed": "Firebase'de E-posta/Şifre girişi açık değil.",
-  "auth/network-request-failed": "İnternet bağlantısı yok.",
-  "auth/too-many-requests": "Çok fazla deneme. Biraz bekleyip tekrar dene.",
-  "auth/api-key-not-valid": "API anahtarı geçersiz.",
-};
 const store = {
   get: k => { try { return localStorage.getItem(k); } catch { return null; } },
   set: (k, v) => { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch {} },
@@ -237,101 +157,216 @@ const store = {
 $("remEmail").checked = store.get("rem_email_on") === "1";
 $("remPass").checked = store.get("rem_pass_on") === "1";
 if ($("remEmail").checked) $("email").value = store.get("rem_email") || "";
+const AUTH_ERR = {
+  "auth/invalid-credential": "E-posta veya şifre hatalı.", "auth/invalid-email": "E-posta adresi geçersiz.",
+  "auth/user-not-found": "Bu e-posta ile kullanıcı yok.", "auth/wrong-password": "Şifre hatalı.",
+  "auth/network-request-failed": "İnternet bağlantısı yok.", "auth/too-many-requests": "Çok fazla deneme. Biraz bekleyip tekrar dene.",
+};
 $("loginForm").addEventListener("submit", async e => {
-  e.preventDefault();
-  $("loginErr").textContent = "";
-  $("loginBtn").disabled = true;
+  e.preventDefault(); $("loginErr").textContent = ""; $("loginBtn").disabled = true;
   try {
     await setPersistence(auth, $("remPass").checked ? browserLocalPersistence : browserSessionPersistence);
     await signInWithEmailAndPassword(auth, $("email").value.trim(), $("pass").value);
     store.set("rem_email_on", $("remEmail").checked ? "1" : null);
     store.set("rem_email", $("remEmail").checked ? $("email").value.trim() : null);
     store.set("rem_pass_on", $("remPass").checked ? "1" : null);
-  }
-  catch (err) { $("loginErr").textContent = AUTH_ERR[err.code] || ("Giriş yapılamadı: " + (err.code || err.message)); }
+  } catch (err) { $("loginErr").textContent = AUTH_ERR[err.code] || ("Giriş yapılamadı: " + (err.code || err.message)); }
   $("loginBtn").disabled = false;
 });
-$("eye").onclick = () => {
-  const p = $("pass"), show = p.type === "password";
-  p.type = show ? "text" : "password";
-  $("eye").textContent = show ? "Gizle" : "Göster";
-};
+$("eye").onclick = () => { const p = $("pass"), h = p.type === "password"; p.type = h ? "text" : "password"; $("eye").textContent = h ? "Gizle" : "Göster"; };
 $("logout").onclick = () => signOut(auth);
 
-/* ---------- Komut gönderme (kısa gecikmeyle toplu) ---------- */
-function commit() {
+onAuthStateChanged(auth, user => {
+  $("login").hidden = !!user; $("app").hidden = !user;
+  unsub.forEach(f => f()); unsub = [];
+  if (!user) return;
+  go("home");
+  unsub.push(onValue(ref(db, "thermostat"), snap => {
+    const v = snap.val() || {};
+    if (Date.now() > editUntil) {
+      if (typeof v.targetTemp === "number") s.target = v.targetTemp;
+      if (typeof v.power === "boolean") s.power = v.power;
+    }
+    s.heating = !!v.heating;
+    s.temp = typeof v.currentTemp === "number" ? v.currentTemp : null;
+    s.hum = typeof v.humidity === "number" ? v.humidity : null;
+    s.lastSeen = v.lastSeen || 0;
+    logSample(); applyProgram(); render();
+  }, e => toast("Veri okunamadı: " + e.code)));
+  unsub.push(onValue(ref(db, "termofer"), snap => {
+    const v = snap.val() || {};
+    cfg.mode = v.mode || "manual"; cfg.preset = v.preset || "ev"; cfg.prog = v.prog || "tasarruf";
+    cfg.temps = { ...cfg.temps, ...(v.temps || {}) }; cfg.home = v.home || {};
+    fetchOut(); applyProgram(); render();
+  }));
+  unsub.push(onValue(ref(db, ".info/connected"), c => { netOk = !!c.val(); render(); }));
+});
+
+/* ---------- Komut ---------- */
+function push() {
   clearTimeout(timer);
-  timer = setTimeout(() => {
-    update(ref(db, "thermostat"), { targetTemp: s.target, power: s.power })
-      .then(() => toast(""))
-      .catch(e => toast("Gönderilemedi: " + e.code));
-  }, 400);
+  timer = setTimeout(() => update(ref(db, "thermostat"), { targetTemp: s.target, power: s.power }).then(() => toast("")).catch(e => toast("Gönderilemedi: " + e.code)), 400);
 }
-function setTarget(v) {
+const saveCfg = o => update(ref(db, "termofer"), o).catch(e => toast("Kaydedilemedi: " + e.code));
+function setTarget(v, userEdit = true) {
   v = Math.min(TMAX, Math.max(TMIN, Math.round(v / STEP) * STEP));
   if (v === s.target) return;
-  s.target = v; editUntil = Date.now() + 3000; render(); commit();
+  s.target = v; editUntil = Date.now() + 3000; render(); push();
 }
 $("minus").onclick = () => setTarget(s.target - STEP);
 $("plus").onclick = () => setTarget(s.target + STEP);
-$("power").onclick = () => { s.power = !s.power; editUntil = Date.now() + 3000; render(); commit(); };
+$("modes").onclick = e => {
+  const m = e.target.closest("button")?.dataset.m; if (!m) return;
+  cfg.mode = m; s.power = m !== "off"; editUntil = Date.now() + 3000;
+  if (m === "program") applyProgram(true);
+  saveCfg({ mode: m }); render(); push();
+};
+$("chips").onclick = e => {
+  const k = e.target.closest("button")?.dataset.k; if (!k || cfg.mode !== "manual") return;
+  cfg.preset = k; saveCfg({ preset: k }); setTarget(cfg.temps[k]); render();
+};
 
-/* ---------- Kadran ---------- */
-const CX = 150, CY = 150, R = 118, A0 = 135, SWEEP = 270;
-const ang = v => A0 + (Math.min(TMAX, Math.max(TMIN, v)) - TMIN) / (TMAX - TMIN) * SWEEP;
-const pt = a => [CX + R * Math.cos(a * Math.PI / 180), CY + R * Math.sin(a * Math.PI / 180)];
-function arc(a1, a2) {
-  const [x1, y1] = pt(a1), [x2, y2] = pt(a2);
-  return `M${x1.toFixed(2)} ${y1.toFixed(2)} A${R} ${R} 0 ${a2 - a1 > 180 ? 1 : 0} 1 ${x2.toFixed(2)} ${y2.toFixed(2)}`;
+/* ---------- Haftalık program (uygulama açıkken uygulanır) ---------- */
+function progMode(d = new Date()) {
+  const segs = PROGS[cfg.prog]?.[2][d.getDay() % 6 === 0 ? "we" : "wd"] || [];
+  const h = d.getHours() + d.getMinutes() / 60; let m = segs[0]?.[1] || "ev";
+  segs.forEach(([f, k]) => { if (f <= h) m = k; });
+  return m;
 }
-$("track").setAttribute("d", arc(A0, A0 + SWEEP));
+function applyProgram(force) {
+  if (cfg.mode !== "program" || !s.power) return;
+  const t = cfg.temps[progMode()];
+  if (t != null && t !== s.target && (force || Date.now() > editUntil)) { s.target = t; push(); }
+}
+setInterval(() => { applyProgram(); render(); }, 30000);
 
-const dial = $("dial");
-function fromPointer(e) {
-  const r = dial.getBoundingClientRect();
-  const x = (e.clientX - r.left) / r.width * 300 - CX, y = (e.clientY - r.top) / r.height * 300 - CY;
-  let rel = ((Math.atan2(y, x) * 180 / Math.PI) - A0 + 360) % 360;
-  if (rel > SWEEP) rel = rel > SWEEP + (360 - SWEEP) / 2 ? 0 : SWEEP;
-  setTarget(TMIN + rel / SWEEP * (TMAX - TMIN));
+/* ---------- Dış sıcaklık ---------- */
+async function fetchOut() {
+  const { lat, lon } = cfg.home; if (lat == null) { outT = null; return; }
+  try {
+    const r = await (await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m`)).json();
+    outT = r.current?.temperature_2m ?? null; render();
+  } catch {}
 }
-let dragging = false;
-dial.addEventListener("pointerdown", e => { dragging = true; dial.setPointerCapture(e.pointerId); fromPointer(e); });
-dial.addEventListener("pointermove", e => dragging && fromPointer(e));
-dial.addEventListener("pointerup", () => dragging = false);
-dial.addEventListener("pointercancel", () => dragging = false);
+setInterval(fetchOut, 15 * 60000);
+
+/* ---------- Kayıt (uygulama açıkken 10 dk'da bir) ---------- */
+const key = b => String(b).padStart(8, "0");
+function logSample() {
+  const b = Math.floor(Date.now() / 600000);
+  if (b === lastBucket || s.temp == null || !online()) return;
+  lastBucket = b;
+  set(ref(db, "termofer/history/" + key(b)), { t: s.temp, h: s.hum ?? null, g: s.target }).catch(() => {});
+}
 
 /* ---------- Çizim ---------- */
-function deviceOnline() { return s.lastSeen && (Date.now() / 1000 - s.lastSeen) < OFFLINE_SEC; }
+const online = () => netOk && s.lastSeen && (Date.now() / 1000 - s.lastSeen) < OFFLINE;
+const CX = 150, CY = 140, R = 118, A0 = 145, SW = 250;
+const ang = v => A0 + (Math.min(TMAX, Math.max(TMIN, v)) - TMIN) / (TMAX - TMIN) * SW;
+const pt = a => [CX + R * Math.cos(a * Math.PI / 180), CY + R * Math.sin(a * Math.PI / 180)];
+const arc = (a, b) => { const [x1, y1] = pt(a), [x2, y2] = pt(b); return `M${x1.toFixed(1)} ${y1.toFixed(1)} A${R} ${R} 0 ${b - a > 180 ? 1 : 0} 1 ${x2.toFixed(1)} ${y2.toFixed(1)}`; };
+$("trk").setAttribute("d", arc(A0, A0 + SW));
 function render() {
-  const online = netOk && deviceOnline();
-  const st = $("status");
-  st.className = "status " + (!netOk ? "bad" : online ? "on" : "bad");
-  $("statusTxt").textContent = !netOk ? "İnternet bağlantısı yok" : online ? "Cihaz çevrimiçi" : "Cihaz çevrimdışı";
-
-  const a = ang(s.target), [kx, ky] = pt(a);
-  $("prog").setAttribute("d", arc(A0, Math.max(A0 + .01, a)));
-  $("glow").setAttribute("d", arc(A0, Math.max(A0 + .01, a)));
+  const on = online();
+  $("hname").textContent = cfg.home.name || "Termofer";
+  $("pDev").className = "pill " + (on ? "on" : "bad");
+  $("devTxt").textContent = !netOk ? "Çevrimdışı" : on ? "Cihaz" : "Cihaz yok";
+  $("out").textContent = outT == null ? "--" : fmt(outT) + "°";
+  $("gauge").classList.toggle("stale", !on);
+  const a = s.temp == null ? A0 : ang(s.temp), [kx, ky] = pt(a);
+  $("prg").setAttribute("d", arc(A0, Math.max(A0 + .01, a)));
   $("knob").setAttribute("cx", kx); $("knob").setAttribute("cy", ky);
-  const tick = $("tick");
-  if (s.temp == null) tick.setAttribute("r", 0);
-  else { const [tx, ty] = pt(ang(s.temp)); tick.setAttribute("r", 5); tick.setAttribute("cx", tx); tick.setAttribute("cy", ty); }
-
-  const heating = s.power && s.heating;
-  dial.classList.toggle("heating", heating);
-  dial.classList.toggle("off", !s.power);
-  dial.classList.toggle("stale", !online);
-  $("now").innerHTML = s.temp == null ? "--" : `${fmt(s.temp)}<small>°C</small>`;
-  $("state").textContent = !s.power ? "Kapalı" : heating ? "Isıtıyor" : "Bekliyor";
-  $("tgt").textContent = `Hedef ${fmt(s.target)} °C`;
-  $("power").textContent = s.power ? "Kapat" : "Aç";
-  $("power").classList.toggle("on", s.power);
-  $("hum").textContent = s.hum == null ? "--" : `%${fmt(s.hum, 0)}`;
-  const age = s.lastSeen ? Math.max(0, Math.round(Date.now() / 1000 - s.lastSeen)) : null;
-  $("seen").textContent = age == null ? "--" : age < 90 ? `${age} sn önce` : `${Math.round(age / 60)} dk önce`;
+  $("now").textContent = s.temp == null ? "--" : fmt(s.temp) + "°";
+  $("hum").textContent = s.hum == null ? "" : "%" + fmt(s.hum, 0);
+  $("tgt").textContent = s.power ? fmt(s.target) + "°" : "Kapalı";
+  $("modes").querySelectorAll("button").forEach(b => b.classList.toggle("a", (cfg.mode === "off" || !s.power ? "off" : cfg.mode) === b.dataset.m));
+  const cur = cfg.mode === "program" ? progMode() : cfg.preset;
+  $("chips").innerHTML = s.power ? Object.entries(MODES).map(([k, [i, n]]) => `<button data-k="${k}" class="${k === cur ? "a" : ""}"><span>${i}</span>${n}</button>`).join("") : "";
+  $("chips").hidden = !s.power;
+  if (view === "dev") devInfo();
 }
-function toast(t) { $("toast").textContent = t; }
-setInterval(render, 5000);
-render();
+const toast = t => $("toast").textContent = t;
+
+/* ---------- Sayfalar ---------- */
+const TITLES = { home: "Termofer", menu: "Ayarlar", temps: "Sıcaklık Ayarları", prog: "Haftalık Program Ayarları", homeset: "Ev Ayarları", dev: "Cihaz Bilgileri", rep: "Raporlar" };
+const PARENT = { menu: "home", rep: "home" };
+function go(v) {
+  view = v;
+  Object.keys(TITLES).forEach(k => $(k).hidden = k !== v);
+  $("ttl").textContent = TITLES[v]; $("back").style.visibility = v === "home" ? "hidden" : "visible";
+  $("hdr").style.visibility = v === "home" ? "visible" : "hidden";
+  if (v === "temps") tempsView(); if (v === "prog") progView(); if (v === "homeset") homeView(); if (v === "dev") devInfo(); if (v === "rep") report();
+  scrollTo(0, 0); render();
+}
+$("back").onclick = () => go(PARENT[view] || "menu");
+$("goSet").onclick = () => go("menu"); $("goRep").onclick = () => go("rep");
+$("menu").onclick = e => { const g = e.target.closest("[data-go]")?.dataset.go; if (g) go(g); };
+$("pDev").onclick = () => go("dev");
+
+let tmp = {};
+function tempsView() {
+  tmp = { ...cfg.temps };
+  const draw = () => $("tlist").innerHTML = Object.entries(MODES).map(([k, [i, n]]) => `<div class="row"><span>${i} ${n}</span><span class="st"><button data-k="${k}" data-d="-1">‹</button>${fmt(tmp[k])}°<button data-k="${k}" data-d="1">›</button></span></div>`).join("");
+  draw();
+  $("tlist").onclick = e => { const b = e.target.closest("button"); if (!b) return; tmp[b.dataset.k] = Math.min(TMAX, Math.max(TMIN, tmp[b.dataset.k] + b.dataset.d * STEP)); draw(); };
+}
+$("saveT").onclick = () => { cfg.temps = { ...tmp }; saveCfg({ temps: tmp }); applyProgram(true); go("menu"); };
+
+let pSel = "tasarruf";
+function progView() {
+  pSel = cfg.prog;
+  $("plist").innerHTML = Object.entries(PROGS).map(([k, [n, d]]) => `<label class="opt"><input type="radio" name="p" value="${k}" ${k === pSel ? "checked" : ""}><span><b>${n}</b><br><span class="mu">${d}</span></span></label>`).join("");
+  $("plist").onchange = e => pSel = e.target.value;
+}
+$("saveP").onclick = () => { cfg.prog = pSel; saveCfg({ prog: pSel }); applyProgram(true); go("menu"); };
+
+let hPos = {};
+function homeView() { hPos = { lat: cfg.home.lat, lon: cfg.home.lon }; $("hn").value = cfg.home.name || ""; locTxt(); }
+const locTxt = () => $("locTxt").textContent = hPos.lat == null ? "Konum seçilmedi" : `Konum: ${hPos.lat.toFixed(3)}, ${hPos.lon.toFixed(3)}`;
+$("loc").onclick = () => navigator.geolocation?.getCurrentPosition(p => { hPos = { lat: p.coords.latitude, lon: p.coords.longitude }; locTxt(); }, () => $("locTxt").textContent = "Konum alınamadı. Tarayıcıda konum iznini aç.");
+$("saveH").onclick = () => { const h = { name: $("hn").value.trim(), lat: hPos.lat ?? null, lon: hPos.lon ?? null }; cfg.home = h; saveCfg({ home: h }); fetchOut(); go("menu"); };
+
+function devInfo() {
+  const on = online(), age = s.lastSeen ? Math.max(0, Math.round(Date.now() / 1000 - s.lastSeen)) : null;
+  const rows = [["Bağlantı durumu", on ? "🟢 Çevrimiçi" : "🔴 Çevrimdışı"], ["Son veri", age == null ? "--" : age < 90 ? age + " sn önce" : Math.round(age / 60) + " dk önce"], ["İç sıcaklık", s.temp == null ? "--" : fmt(s.temp) + " °C"], ["Nem", s.hum == null ? "--" : "%" + fmt(s.hum, 0)], ["Isıtma", s.heating ? "Çalışıyor" : "Bekliyor"]];
+  $("devInfo").innerHTML = rows.map(([a, b]) => `<div class="row"><span>${a}</span><b>${b}</b></div>`).join("");
+}
+
+/* ---------- Raporlar ---------- */
+let rr = 0, ro = 0;
+$("rtabs").onclick = e => { const r = e.target.closest("button")?.dataset.r; if (r == null) return; rr = +r; ro = 0; report(); };
+$("rp").onclick = () => { ro++; report(); }; $("rn").onclick = () => { if (ro) { ro--; report(); } };
+const avg = a => a.length ? a.reduce((x, y) => x + y, 0) / a.length : null;
+async function report() {
+  $("rtabs").querySelectorAll("button").forEach(b => b.classList.toggle("a", +b.dataset.r === rr));
+  const days = [1, 7, 30][rr], span = days * 864e5, end = Date.now() - ro * span, from = end - span;
+  $("rl").textContent = (ro ? ro + " dönem önce · " : "") + ["Son 24 saat", "Son 7 gün", "Son 30 gün"][rr];
+  let rows = [], outs = [];
+  try {
+    const sn = await get(query(ref(db, "termofer/history"), orderByKey(), startAt(key(from / 600000 | 0)), endAt(key(end / 600000 | 0))));
+    sn.forEach(c => { rows.push({ ts: +c.key * 600000, ...c.val() }); });
+  } catch (e) { $("rnote").textContent = "Kayıtlar okunamadı: " + e.code; }
+  const { lat, lon } = cfg.home;
+  if (lat != null) try {
+    const r = await (await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=temperature_2m&past_days=31&forecast_days=1&timezone=GMT`)).json();
+    r.hourly.time.forEach((t, i) => { const ts = Date.parse(t + "Z"); if (ts >= from && ts <= end && r.hourly.temperature_2m[i] != null) outs.push({ ts, v: r.hourly.temperature_2m[i] }); });
+  } catch {}
+  const T = rows.map(r => r.t).filter(v => v != null), H = rows.map(r => r.h).filter(v => v != null), O = outs.map(o => o.v);
+  const card = (ic, n, a, u, arr) => `<div class="card"><span class="mu">${ic} ${n}</span><br><b>${a == null ? "--" : fmt(a)}</b> ${u}<small>Y:${arr.length ? fmt(Math.max(...arr)) : "--"} &nbsp; D:${arr.length ? fmt(Math.min(...arr)) : "--"}</small></div>`;
+  $("rstat").innerHTML = card("🏠", "İç Mekan", avg(T), "°C", T) + card("☀", "Dış Ortam", avg(O), "°C", O) + card("💧", "Nem", avg(H), "%", H);
+  $("chart").innerHTML = chart(rows, outs, from, end);
+  $("rnote").textContent = lat == null ? "Dış sıcaklık için Ev Ayarları'ndan konumu seç. " : "";
+  $("rnote").textContent += "İç sıcaklık kayıtları uygulama açıkken alınır.";
+}
+function chart(rows, outs, from, end) {
+  const W = 320, H = 170, p = 28, a = rows.map(r => r.t), b = outs.map(o => o.v), all = [...a, ...b];
+  if (all.length < 2) return `<p class="mu" style="padding:30px 0;text-align:center">Bu aralıkta veri yok.</p>`;
+  const lo = Math.floor(Math.min(...all) - 1), hi = Math.ceil(Math.max(...all) + 1);
+  const X = t => p + (t - from) / (end - from) * (W - p - 6), Y = v => H - 18 - (v - lo) / (hi - lo) * (H - 28);
+  const line = (arr, col) => arr.length > 1 ? `<polyline fill="none" stroke="${col}" stroke-width="2" points="${arr.map(([t, v]) => X(t).toFixed(1) + "," + Y(v).toFixed(1)).join(" ")}"/>` : "";
+  const fm = t => new Date(t).toLocaleString("tr-TR", end - from > 864e5 ? { day: "2-digit", month: "2-digit" } : { hour: "2-digit", minute: "2-digit" });
+  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%"><text x="2" y="${Y(hi) + 8}" font-size="10" fill="#888">${hi}°</text><text x="2" y="${Y(lo)}" font-size="10" fill="#888">${lo}°</text><line x1="${p}" x2="${p}" y1="8" y2="${H - 18}" stroke="#bbb"/><line x1="${p}" x2="${W - 6}" y1="${H - 18}" y2="${H - 18}" stroke="#bbb"/>${line(outs.map(o => [o.ts, o.v]), "#f2994a")}${line(rows.map(r => [r.ts, r.t]), "#e5484d")}<text x="${p}" y="${H - 4}" font-size="10" fill="#888">${fm(from)}</text><text x="${W - 6}" y="${H - 4}" font-size="10" fill="#888" text-anchor="end">${fm(end)}</text></svg><p class="mu"><span style="color:#e5484d">■</span> İç &nbsp; <span style="color:#f2994a">■</span> Dış</p>`;
+}
 
 if ("serviceWorker" in navigator) addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));
 </script>
