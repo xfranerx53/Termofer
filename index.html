@@ -107,6 +107,7 @@ input,select{font:inherit;font-size:16px;color:var(--tx);background:#fff;border:
     <button data-go="temps">Sıcaklık Ayarları <i>›</i></button>
     <button data-go="prog">Haftalık Program Ayarları <i>›</i></button>
     <button data-go="away">Boş Ev Modu <i>›</i></button>
+    <button data-go="prot">Koruma ve Maliyet <i>›</i></button>
     <button data-go="homeset">Ev Ayarları <i>›</i></button>
     <button data-go="dev">Cihaz Bilgileri <i>›</i></button>
     <button id="logout" style="color:var(--bad)">Çıkış yap</button>
@@ -122,6 +123,16 @@ input,select{font:inherit;font-size:16px;color:var(--tx);background:#fff;border:
     <div class="row"><span>Hareketsiz kalma süresi</span><span class="st"><button data-a="m" data-d="-1">‹</button><span id="awM"></span><button data-a="m" data-d="1">›</button></span></div>
     <div class="row"><span>Ev boşken hedef</span><span class="st"><button data-a="t" data-d="-1">‹</button><span id="awT"></span><button data-a="t" data-d="1">›</button></span></div>
   </div><button class="btn" id="saveA">Kaydet</button></div>
+
+  <div class="view sub" id="prot" hidden><div class="card" style="display:flex;flex-direction:column;gap:6px">
+    <div class="opt"><span style="font-size:22px">❄</span><span><b>Don koruması (her zaman açık)</b><br><span class="mu">Oda 5 °C altına inerse termostat kapalı olsa bile kombi çalışır, 6 °C'ye çıkınca durur.</span></span></div>
+    <label class="opt"><input type="checkbox" id="pwOn"><span><b>Pencere açık algılama</b><br><span class="mu">Sıcaklık 5 dakikada 1 °C'den fazla düşerse ısıtma 20 dakika durur.</span></span></label>
+  </div>
+  <div class="card" style="display:flex;flex-direction:column;gap:10px"><b>Gaz maliyeti tahmini</b>
+    <p class="mu">Raporlarda kombi çalışma süresinden tahmini gaz ve maliyet gösterilir. Değerleri kombi etiketinden ve faturandan gir.</p>
+    <label class="mu">Kombi saatlik gaz tüketimi (m³/saat)<input id="cM3" type="number" inputmode="decimal" step="0.1" min="0" placeholder="ör. 1.5"></label>
+    <label class="mu">Doğalgaz birim fiyatı (₺/m³)<input id="cPr" type="number" inputmode="decimal" step="0.01" min="0" placeholder="ör. 9.50"></label>
+  </div><button class="btn" id="saveR">Kaydet</button></div>
 
   <div class="view sub" id="homeset" hidden><div class="card" style="display:flex;flex-direction:column;gap:12px"><b>Evin İsmi ve Yeri</b><input id="hn" placeholder="Ev adı"><input id="adr" placeholder="Şehir veya ilçe (ör. Kadıköy)"><button class="btn" id="srch" style="background:#2f80ed">Adresi ara</button><div id="res"></div><button class="btn" id="loc" style="background:#2f80ed">Konumumu kullan</button><div class="mu" id="locTxt">Konum seçilmedi</div></div><button class="btn" id="saveH">Kaydet</button></div>
 
@@ -156,9 +167,9 @@ const PROGS = {
   is: ["İş Modu", "Hafta içi 0-7 Uyku, 7-9 Ev, 9-18 Dışarı, 18-24 Ev. Haftasonu 0-9 Uyku, 9-24 Ev", { wd: [[0, "uyku"], [7, "ev"], [9, "disari"], [18, "ev"]], we: [[0, "uyku"], [9, "ev"]] }],
   konfor: ["Konfor Modu", "Tüm günler 0-7 Uyku, 7-24 Ev", { wd: [[0, "uyku"], [7, "ev"]], we: [[0, "uyku"], [7, "ev"]] }],
 };
-const s = { target: 21, power: true, heating: false, temp: null, hum: null, lastSeen: 0, away: false, lastMotion: 0, awayEnabled: false, awayMinutes: 180, awayTemp: 17 };
+const s = { target: 21, power: true, heating: false, temp: null, hum: null, lastSeen: 0, away: false, lastMotion: 0, awayEnabled: false, awayMinutes: 180, awayTemp: 17, frost: false, windowOpen: false, windowDetect: false, rssi: null, uptime: null, fw: "", progAt: 0 };
 const AWAY_MIN = [30, 60, 90, 120, 180, 240, 360, 480, 720];   // dakika
-const cfg = { mode: "manual", preset: "ev", prog: "tasarruf", temps: { ev: 22, uyku: 20, disari: 18, kullanici: 21 }, home: {} };
+const cfg = { mode: "manual", preset: "ev", prog: "tasarruf", temps: { ev: 22, uyku: 20, disari: 18, kullanici: 21 }, home: {}, cost: {} };
 let editUntil = 0, lastDb = {}, pend = null, ready = { t: false, c: false }, netOk = true, unsub = [], timer, outT = null, lastBucket = 0, view = "home";
 
 /* ---------- Giriş ---------- */
@@ -196,14 +207,17 @@ onAuthStateChanged(auth, user => {
   unsub.push(onValue(ref(db, "thermostat"), snap => {
     const v = snap.val() || {};
     lastDb = { t: v.targetTemp, p: v.power };
-    const awayNow = !!v.away, awayChg = awayNow !== s.away;   // boş ev modu hedefi kendisi değiştirir: manuele geçme
+    // boş ev modu ve alıcının kendi program geçişi hedefi kendisi değiştirir: manuele geçme
+    const awayNow = !!v.away, awayChg = awayNow !== s.away, progChg = (v.progAt || 0) !== s.progAt;
     if (Date.now() > editUntil) {
       // Cihazdan (tuş) hedef değişti: program modunda isek manuele geç, program geri almasın
-      if (ready.t && ready.c && cfg.mode === "program" && !awayNow && !awayChg && typeof v.targetTemp === "number" && v.targetTemp !== s.target) { cfg.mode = "manual"; saveCfg({ mode: "manual" }); }
+      if (ready.t && ready.c && cfg.mode === "program" && !awayNow && !awayChg && !progChg && typeof v.targetTemp === "number" && v.targetTemp !== s.target) { cfg.mode = "manual"; saveCfg({ mode: "manual" }); }
       if (typeof v.targetTemp === "number") s.target = v.targetTemp;
       if (typeof v.power === "boolean") s.power = v.power;
     }
-    s.away = awayNow; s.lastMotion = v.lastMotion || 0;
+    s.away = awayNow; s.lastMotion = v.lastMotion || 0; s.progAt = v.progAt || 0;
+    s.frost = !!v.frost; s.windowOpen = !!v.windowOpen; s.windowDetect = !!v.windowDetect;
+    s.rssi = typeof v.rssi === "number" ? v.rssi : null; s.uptime = typeof v.uptime === "number" ? v.uptime : null; s.fw = v.fw || "";
     s.awayEnabled = !!v.awayEnabled; s.awayMinutes = v.awayMinutes || 180; s.awayTemp = typeof v.awayTemp === "number" ? v.awayTemp : 17;
     s.heating = !!v.heating;
     s.temp = typeof v.currentTemp === "number" ? v.currentTemp : null;
@@ -214,7 +228,8 @@ onAuthStateChanged(auth, user => {
   unsub.push(onValue(ref(db, "termofer"), snap => {
     const v = snap.val() || {};
     cfg.mode = v.mode || "manual"; cfg.preset = v.preset || "ev"; cfg.prog = v.prog || "tasarruf";
-    cfg.temps = { ...cfg.temps, ...(v.temps || {}) }; cfg.home = v.home || {};
+    cfg.temps = { ...cfg.temps, ...(v.temps || {}) }; cfg.home = v.home || {}; cfg.cost = v.cost || {};
+    if (!mirrored) { mirrored = true; update(ref(db, "thermostat/sched"), schedOf()).catch(() => {}); }   // alıcı programı uygulama kapalıyken de uygulasın
     ready.c = true; reconcile(); fetchOut(); applyProgram(); render();
   }));
   unsub.push(onValue(ref(db, ".info/connected"), c => { netOk = !!c.val(); render(); }));
@@ -248,7 +263,12 @@ function reconcile() {
   if (!s.power && cfg.mode !== "off") { cfg.mode = "off"; saveCfg({ mode: "off" }); }
   else if (s.power && cfg.mode === "off") { cfg.mode = "manual"; saveCfg({ mode: "manual" }); }
 }
-const saveCfg = o => update(ref(db, "termofer"), o).catch(e => toast("Kaydedilemedi: " + e.code));
+let mirrored = false;
+const schedOf = () => ({ mode: cfg.mode, prog: cfg.prog, temps: cfg.temps });
+function saveCfg(o) {
+  if ("mode" in o || "prog" in o || "temps" in o) update(ref(db, "thermostat/sched"), schedOf()).catch(() => {});   // alıcıya yansıt
+  return update(ref(db, "termofer"), o).catch(e => toast("Kaydedilemedi: " + e.code));
+}
 function setTarget(v, userEdit = true) {
   v = Math.min(TMAX, Math.max(TMIN, Math.round(v / STEP) * STEP));
   if (v === s.target) return;
@@ -370,7 +390,7 @@ function render() {
   $("pDev").className = "pill " + (on ? "on" : "bad");
   $("devTxt").textContent = !netOk ? "Çevrimdışı" : on ? "Cihaz" : "Cihaz yok";
   $("out").textContent = outT == null ? "--" : fmt(outT) + "°";
-  $("awayB").textContent = s.away && s.power ? "🏃 Ev boş modu aktif" : "";
+  $("awayB").textContent = s.frost ? "❄ Don koruması devrede" : s.windowOpen ? "🪟 Pencere açık algılandı: ısıtma durdu" : s.away && s.power ? "🏃 Ev boş modu aktif" : "";
   $("gauge").classList.toggle("stale", !on);
   const a = ang(s.target), [kx, ky] = pt(a);
   $("prg").setAttribute("d", arc(A0, Math.max(A0 + .01, a)));
@@ -388,14 +408,14 @@ function render() {
 const toast = t => $("toast").textContent = t;
 
 /* ---------- Sayfalar ---------- */
-const TITLES = { home: "Termofer", menu: "Ayarlar", temps: "Sıcaklık Ayarları", prog: "Haftalık Program Ayarları", away: "Boş Ev Modu", homeset: "Ev Ayarları", dev: "Cihaz Bilgileri", rep: "Raporlar" };
+const TITLES = { home: "Termofer", menu: "Ayarlar", temps: "Sıcaklık Ayarları", prog: "Haftalık Program Ayarları", away: "Boş Ev Modu", prot: "Koruma ve Maliyet", homeset: "Ev Ayarları", dev: "Cihaz Bilgileri", rep: "Raporlar" };
 const PARENT = { menu: "home", rep: "home" };
 function go(v) {
   view = v;
   Object.keys(TITLES).forEach(k => $(k).hidden = k !== v);
   $("ttl").textContent = TITLES[v]; $("back").style.visibility = v === "home" ? "hidden" : "visible";
   $("hdr").style.visibility = v === "home" ? "visible" : "hidden";
-  if (v === "temps") tempsView(); if (v === "prog") progView(); if (v === "away") awayView(); if (v === "homeset") homeView(); if (v === "dev") devInfo(); if (v === "rep") report();
+  if (v === "temps") tempsView(); if (v === "prog") progView(); if (v === "away") awayView(); if (v === "prot") protView(); if (v === "homeset") homeView(); if (v === "dev") devInfo(); if (v === "rep") report();
   scrollTo(0, 0); render();
 }
 $("back").onclick = () => go(PARENT[view] || "menu");
@@ -439,6 +459,17 @@ $("saveA").onclick = () => {
   update(ref(db, "thermostat"), { awayEnabled: aw.en, awayMinutes: AWAY_MIN[aw.i], awayTemp: aw.t }).then(() => go("menu")).catch(e => toast("Kaydedilemedi: " + e.code));
 };
 
+function protView() {
+  $("pwOn").checked = s.windowDetect;
+  $("cM3").value = cfg.cost.m3h ?? ""; $("cPr").value = cfg.cost.price ?? "";
+}
+$("saveR").onclick = () => {
+  const num = id => { const x = parseFloat(String($(id).value).replace(",", ".")); return isFinite(x) && x > 0 ? x : null; };
+  const cost = { m3h: num("cM3"), price: num("cPr") };
+  cfg.cost = cost; saveCfg({ cost });
+  update(ref(db, "thermostat"), { windowDetect: $("pwOn").checked }).then(() => go("menu")).catch(e => toast("Kaydedilemedi: " + e.code));
+};
+
 let hPos = {};
 function homeView() { hPos = { lat: cfg.home.lat, lon: cfg.home.lon, place: cfg.home.place }; $("res").innerHTML = ""; $("adr").value = ""; $("hn").value = cfg.home.name || ""; locTxt(); }
 const locTxt = () => $("locTxt").textContent = hPos.lat == null ? "Konum seçilmedi" : `Konum: ${hPos.place || hPos.lat.toFixed(3) + ", " + hPos.lon.toFixed(3)}`;
@@ -463,7 +494,7 @@ $("saveH").onclick = () => { const h = { name: $("hn").value.trim(), lat: hPos.l
 
 function devInfo() {
   const on = online(), age = s.lastSeen ? Math.max(0, Math.round(Date.now() / 1000 - s.lastSeen)) : null;
-  const rows = [["Bağlantı durumu", on ? "🟢 Çevrimiçi" : "🔴 Çevrimdışı"], ["Son veri", age == null ? "--" : age < 90 ? age + " sn önce" : Math.round(age / 60) + " dk önce"], ["İç sıcaklık", s.temp == null ? "--" : fmt(s.temp) + " °C"], ["Nem", s.hum == null ? "--" : "%" + fmt(s.hum, 0)], ["Isıtma", s.heating ? "Çalışıyor" : "Bekliyor"], ["Boş ev modu", !s.awayEnabled ? "Kapalı" : s.away ? "Aktif (ev boş)" : "Açık"], ["Son hareket", !s.lastMotion ? "--" : (() => { const m = Math.max(0, Math.round((Date.now() / 1000 - s.lastMotion) / 60)); return m < 1 ? "Az önce" : m < 90 ? m + " dk önce" : Math.round(m / 60) + " sa önce"; })()]];
+  const rows = [["Bağlantı durumu", on ? "🟢 Çevrimiçi" : "🔴 Çevrimdışı"], ["Son veri", age == null ? "--" : age < 90 ? age + " sn önce" : Math.round(age / 60) + " dk önce"], ["İç sıcaklık", s.temp == null ? "--" : fmt(s.temp) + " °C"], ["Nem", s.hum == null ? "--" : "%" + fmt(s.hum, 0)], ["Isıtma", s.heating ? "Çalışıyor" : "Bekliyor"], ["Boş ev modu", !s.awayEnabled ? "Kapalı" : s.away ? "Aktif (ev boş)" : "Açık"], ["Wi-Fi sinyali", s.rssi == null ? "--" : s.rssi + " dBm"], ["Çalışma süresi", s.uptime == null ? "--" : s.uptime < 3600 ? Math.floor(s.uptime / 60) + " dk" : s.uptime < 172800 ? Math.floor(s.uptime / 3600) + " sa" : Math.floor(s.uptime / 86400) + " gün"], ["Yazılım", s.fw || "--"], ["Son hareket", !s.lastMotion ? "--" : (() => { const m = Math.max(0, Math.round((Date.now() / 1000 - s.lastMotion) / 60)); return m < 1 ? "Az önce" : m < 90 ? m + " dk önce" : Math.round(m / 60) + " sa önce"; })()]];
   $("devInfo").innerHTML = rows.map(([a, b]) => `<div class="row"><span>${a}</span><b>${b}</b></div>`).join("");
 }
 
@@ -490,7 +521,10 @@ async function report() {
   const card = (ic, n, a, u, arr) => `<div class="card"><span class="mu">${ic} ${n}</span><br><b>${a == null ? "--" : fmt(a)}</b> ${u}<small>Y:${arr.length ? fmt(Math.max(...arr)) : "--"} &nbsp; D:${arr.length ? fmt(Math.min(...arr)) : "--"}</small></div>`;
   const mins = rows.filter(r => r.o === 1).length * 10, hasO = rows.some(r => r.o != null);
   const kombi = `<div class="card"><span class="mu">🔥 Kombi Çalışma</span><br><b>${!hasO ? "--" : mins >= 60 ? Math.floor(mins / 60) + " sa " + (mins % 60) + " dk" : mins + " dk"}</b><small>Kayıtlı verilere göre</small></div>`;
-  $("rstat").innerHTML = card("🏠", "İç Mekan", avg(T), "°C", T) + card("☀", "Dış Ortam", avg(O), "°C", O) + card("💧", "Nem", avg(H), "%", H) + kombi;
+  const { m3h, price } = cfg.cost || {}, m3 = m3h ? mins / 60 * m3h : null;
+  const gaz = `<div class="card"><span class="mu">🔥 Tahmini Gaz</span><br><b>${m3 == null || !hasO ? "--" : fmt(m3)}</b> m³<small>${m3h ? "Saatlik " + fmt(m3h) + " m³ ile" : "Koruma ve Maliyet'ten gir"}</small></div>`;
+  const tl = `<div class="card"><span class="mu">₺ Tahmini Maliyet</span><br><b>${m3 == null || !price || !hasO ? "--" : fmt(m3 * price, 0)}</b> ₺<small>${price ? "Birim " + fmt(price, 2) + " ₺/m³" : "Fiyat girilmedi"}</small></div>`;
+  $("rstat").innerHTML = card("🏠", "İç Mekan", avg(T), "°C", T) + card("☀", "Dış Ortam", avg(O), "°C", O) + card("💧", "Nem", avg(H), "%", H) + kombi + gaz + tl;
   $("chart").innerHTML = chart(rows, outs, from, end);
   $("rnote").textContent = lat == null ? "Dış sıcaklık için Ev Ayarları'ndan konumu seç. " : "";
   $("rnote").textContent += "Kayıtlar uygulama açıkken 10 dakikada bir alınır.";

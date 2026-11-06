@@ -20,6 +20,12 @@
 #define RELAY_ACTIVE_LOW true   // optokuplorlu role modulleri genelde LOW'da calisir
 #define HYST             0.3    // histerezis (C)
 #define DATA_TIMEOUT_MS  120000 // verici 2 dk susarsa kombi guvenlik icin kapanir
+#define FW_VERSION       "1.2"
+#define FROST_TEMP       5.0f   // DON KORUMASI: oda bu degerin altina inerse kapali olsa bile kombi calisir
+#define FROST_HYST       1.0f
+#define WINDOW_DROP      1.0f   // PENCERE ACIK: 5 dk'da bu kadar dusus (uygulamadan acilirsa)
+#define WINDOW_PAUSE_MS  1200000UL  // pencere algilaninca isitma 20 dk durur
+#define TZ_OFFSET_S      (3 * 3600)  // Turkiye UTC+3 (yaz saati yok)
 
 // DIKKAT: TxPacket vericideki (verici.ino) ile BIREBIR ayni olmali
 typedef struct { float temp; float hum; float target; uint8_t power; uint8_t changed; uint8_t motion; } TxPacket;
@@ -41,6 +47,18 @@ float awayTemp = 17.0f, savedTarget = 21.0f;
 unsigned long lastMotionMs = 0;
 uint32_t lastMotionEpoch = 0;
 unsigned long lastData = 0, lastCycle = 0, lastPush = 0;
+
+// Don korumasi / pencere algilama
+bool frost = false, windowDetect = false, windowOpen = false;
+float tHist[6]; uint8_t tHistN = 0;
+unsigned long lastSample = 0, windowSince = 0;
+
+// Haftalik program (uygulama "thermostat/sched" olarak yansitir; uygulama kapaliyken de calisir)
+String schedMode = "manual", schedProg = "tasarruf";
+float schedTemps[3] = {22.0f, 20.0f, 18.0f};   // ev, uyku, disari
+bool schedValid = false, needModePush = false;
+uint32_t progAt = 0, lastBucket = 0;
+unsigned long lastProg = 0;
 
 #if ESP_ARDUINO_VERSION_MAJOR >= 3
 void onRecv(const esp_now_recv_info_t *info, const uint8_t *data, int len) {
@@ -78,6 +96,12 @@ bool pushState() {
   d["away"] = away;
   d["savedTarget"] = savedTarget;
   d["lastMotion"] = lastMotionEpoch;
+  d["frost"] = frost;
+  d["windowOpen"] = windowOpen;
+  d["progAt"] = progAt;
+  d["rssi"] = WiFi.RSSI();
+  d["uptime"] = (uint32_t)(millis() / 1000);
+  d["fw"] = FW_VERSION;
   String body; serializeJson(d, body);
   int code = h.PATCH(body);
   h.end();
@@ -94,6 +118,16 @@ void pollState() {
       awayEnabled = d["awayEnabled"] | false;
       awayMinutes = d["awayMinutes"] | 180;
       awayTemp = d["awayTemp"] | 17.0f;
+      windowDetect = d["windowDetect"] | false;
+      JsonObject sc = d["sched"];
+      if (!sc.isNull()) {
+        const char *m = sc["mode"] | "manual"; schedMode = m;
+        const char *pr = sc["prog"] | "tasarruf"; schedProg = pr;
+        schedTemps[0] = sc["temps"]["ev"] | 22.0f;
+        schedTemps[1] = sc["temps"]["uyku"] | 20.0f;
+        schedTemps[2] = sc["temps"]["disari"] | 18.0f;
+        schedValid = true;
+      }
       float t = d["targetTemp"]; bool p = d["power"];
       t = constrain(t, 10.0f, 30.0f);
       if (firstPoll) {                       // acilis: Firebase'deki durumu aynen devral
@@ -130,13 +164,95 @@ void checkAway() {
 
 void updateRelay() {
   bool fresh = !isnan(temp) && (millis() - lastData < DATA_TIMEOUT_MS);
-  bool prev = heating;
-  if (!power || !fresh) heating = false;
+  bool prev = heating, prevFrost = frost;
+  if (fresh && temp < FROST_TEMP) frost = true;
+  else if (!fresh || temp >= FROST_TEMP + FROST_HYST) frost = false;
+  if (frost) heating = true;                                  // don korumasi her seyden once gelir
+  else if (!power || !fresh || windowOpen) heating = false;
   else if (temp < target - HYST) heating = true;
   else if (temp >= target + HYST) heating = false;
   bool level = RELAY_ACTIVE_LOW ? !heating : heating;
   digitalWrite(RELAY_PIN, level ? HIGH : LOW);
+  if (prevFrost != frost) dirty = true;
   if (prev != heating) { dirty = true; sendReply(); }
+}
+
+// Pencere acik algilama: dakikada bir ornek, 5 dk'da WINDOW_DROP kadar dusus -> isitma 20 dk durur
+void checkWindow() {
+  if (!windowDetect) { if (windowOpen) { windowOpen = false; dirty = true; } return; }
+  if (windowOpen && millis() - windowSince > WINDOW_PAUSE_MS) { windowOpen = false; tHistN = 0; dirty = true; return; }
+  if (millis() - lastSample < 60000 || isnan(temp)) return;
+  lastSample = millis();
+  for (int i = 5; i > 0; i--) tHist[i] = tHist[i - 1];
+  tHist[0] = temp; if (tHistN < 6) tHistN++;
+  if (!windowOpen && !frost && tHistN >= 6 && tHist[5] - tHist[0] >= WINDOW_DROP) {
+    windowOpen = true; windowSince = millis(); dirty = true;
+    Serial.println("Pencere acik algilandi: isitma 20 dk duruyor");
+  }
+}
+
+// ---- Haftalik program (uygulamadaki PROGS ile ayni) ----  m: 0=ev 1=uyku 2=disari
+struct Seg { uint8_t h; uint8_t m; };
+const Seg TAS_WD[] = {{0,1},{7,2},{18,0}}, TAS_WE[] = {{0,1},{9,0}};
+const Seg IS_WD[]  = {{0,1},{7,0},{9,2},{18,0}}, IS_WE[] = {{0,1},{9,0}};
+const Seg KON[]    = {{0,1},{7,0}};
+int progModeIdx(const String &p, bool we, float h) {
+  const Seg *s; int n;
+  if (p == "is") { if (we) { s = IS_WE; n = 2; } else { s = IS_WD; n = 4; } }
+  else if (p == "konfor") { s = KON; n = 2; }
+  else { if (we) { s = TAS_WE; n = 2; } else { s = TAS_WD; n = 3; } }
+  int m = s[0].m;
+  for (int i = 0; i < n; i++) if (s[i].h <= h) m = s[i].m;
+  return m;
+}
+void applyProgram() {
+  if (!schedValid || schedMode != "program" || !power || away) return;
+  if (millis() - lastProg < 30000) return;
+  lastProg = millis();
+  time_t now = time(nullptr);
+  if (now < 1700000000) return;                 // saat henuz NTP'den alinmadi
+  struct tm t; localtime_r(&now, &t);
+  int mi = progModeIdx(schedProg, t.tm_wday == 0 || t.tm_wday == 6, t.tm_hour + t.tm_min / 60.0f);
+  float want = constrain(schedTemps[mi], 10.0f, 30.0f);
+  if (fabs(want - target) > 0.01) {
+    target = want; progAt = (uint32_t)now; dirty = true; sendReply();
+    Serial.printf("Program: hedef=%.1f\n", target);
+  }
+}
+
+// Gecmis kaydi (uygulama kapaliyken de): 10 dk'da bir termofer/history/<kova>
+void logHistory() {
+  time_t now = time(nullptr);
+  if (now < 1700000000 || isnan(temp)) return;
+  uint32_t b = (uint32_t)now / 600;
+  if (b == lastBucket) return;
+  char path[96]; snprintf(path, sizeof(path), "%s/termofer/history/%08u.json?auth=%s", DB_URL, (unsigned)b, DB_SECRET);
+  WiFiClientSecure c; c.setInsecure();
+  HTTPClient h; h.begin(c, path);
+  h.addHeader("Content-Type", "application/json");
+  JsonDocument d;
+  d["t"] = temp; if (!isnan(hum)) d["h"] = hum;
+  d["g"] = target; d["o"] = heating ? 1 : 0;
+  String body; serializeJson(d, body);
+  int code = h.PUT(body);
+  h.end();
+  if (code == 200) lastBucket = b;
+}
+
+// Verici tusuyla programdan cikildi: uygulama kapali olsa bile modu "manual" yap
+void pushModeManual() {
+  WiFiClientSecure c; c.setInsecure();
+  HTTPClient h; h.begin(c, String(DB_URL) + "/termofer.json?auth=" + DB_SECRET);
+  h.addHeader("Content-Type", "application/json");
+  int code = h.PATCH("{\"mode\":\"manual\"}");
+  h.end();
+  if (code != 200) return;
+  WiFiClientSecure c2; c2.setInsecure();
+  HTTPClient h2; h2.begin(c2, String(DB_URL) + "/thermostat/sched.json?auth=" + DB_SECRET);
+  h2.addHeader("Content-Type", "application/json");
+  code = h2.PATCH("{\"mode\":\"manual\"}");
+  h2.end();
+  if (code == 200) needModePush = false;
 }
 
 // ================= WiFi KURULUM (telefonla ag secme) =================
@@ -232,7 +348,7 @@ void startPortal() {
 void onConnected() {
   wifiState = WST_CONNECTED; lostSince = 0;
   Serial.printf("WiFi baglandi: %s  IP: %s  kanal: %d\n", WiFi.SSID().c_str(), WiFi.localIP().toString().c_str(), WiFi.channel());
-  if (!ntpStarted) { configTime(0, 0, "pool.ntp.org"); ntpStarted = true; }
+  if (!ntpStarted) { configTime(TZ_OFFSET_S, 0, "pool.ntp.org"); ntpStarted = true; }
   pollState();                              // ilk baglantida son hedefi Firebase'den al
 }
 
@@ -338,12 +454,15 @@ void loop() {
       target = constrain(in.target, 10.0f, 30.0f);
       power = in.power;
       if (away) away = false;   // elle degisti: bos ev modundan cik
+      if (schedMode == "program") { schedMode = "manual"; needModePush = true; }   // tusla elle degisti: programdan cik
       dirty = true;
       Serial.printf("Vericiden: hedef=%.1f power=%d\n", target, power);
     }
     sendReply();
   }
 
+  checkWindow();
+  applyProgram();
   updateRelay();
   checkAway();
 
@@ -351,7 +470,8 @@ void loop() {
   if (millis() - lastCycle > 2000 && wifiState == WST_CONNECTED && WiFi.status() == WL_CONNECTED) {
     lastCycle = millis();
     if (millis() - lastPush > 20000) dirty = true;   // periyodik canlilik/sicaklik guncellemesi
-    if (dirty) { if (pushState()) dirty = false; }
-    else pollState();
+    if (needModePush) pushModeManual();
+    else if (dirty) { if (pushState()) dirty = false; }
+    else { pollState(); logHistory(); }
   }
 }

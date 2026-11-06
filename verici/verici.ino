@@ -20,6 +20,7 @@ uint8_t aliciMac[] = {0x88, 0xF1, 0x55, 0x32, 0x03, 0x70};  // 88:f1:55:32:03:70
 #define PIR_ENABLED 1  // 0: PIR yok / kapali
 #define PIR_PIN   27   // HC-SR501 OUT pini (VCC=5V veya 3.3V, GND=GND). Hareket varken HIGH
 #define PIR_WARMUP_MS 60000  // sensor acilista ~1 dk kararsiz: bu sure hareket sayilmaz
+#define TEMP_OFFSET 0.0f  // sensor kalibrasyonu: gercek termometreyle fark varsa buraya yaz (ornek -0.7)
 #define TEMP_MIN  10.0f
 #define TEMP_MAX  30.0f
 #define TEMP_STEP 0.5f
@@ -203,7 +204,7 @@ void loop() {
   if (millis() - lastRead > 2000) {
     lastRead = millis();
     float t = dht.readTemperature(), h = dht.readHumidity();
-    if (!isnan(t)) { temp = t; hum = h; }
+    if (!isnan(t)) { temp = t + TEMP_OFFSET; hum = h; }
   }
 
   // Aliciden cevap geldi
