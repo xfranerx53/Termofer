@@ -1,5 +1,5 @@
 // ===== AKILLI TERMOSTAT - VERICI (oda ici) =====
-// DHT22 + OLED + 3 tus (+ / - / ac-kapa), ESP-NOW ile aliciya baglanir.
+// DHT22 + OLED + 3 tus (+ / - / ac-kapa) + PIR hareket sensoru (HC-SR501), ESP-NOW ile aliciya baglanir.
 // Arduino-ESP32 core 3.x, kutuphaneler: DHT sensor library, Adafruit SSD1306, Adafruit GFX
 
 #include <WiFi.h>
@@ -17,6 +17,9 @@ uint8_t aliciMac[] = {0x88, 0xF1, 0x55, 0x32, 0x03, 0x70};  // 88:f1:55:32:03:70
 #define BTN_UP    32   // tus diger ucu GND'ye
 #define BTN_DOWN  33
 #define BTN_POWER 25
+#define PIR_ENABLED 1  // 0: PIR yok / kapali
+#define PIR_PIN   27   // HC-SR501 OUT pini (VCC=5V veya 3.3V, GND=GND). Hareket varken HIGH
+#define PIR_WARMUP_MS 60000  // sensor acilista ~1 dk kararsiz: bu sure hareket sayilmaz
 #define TEMP_MIN  10.0f
 #define TEMP_MAX  30.0f
 #define TEMP_STEP 0.5f
@@ -27,10 +30,12 @@ uint8_t aliciMac[] = {0x88, 0xF1, 0x55, 0x32, 0x03, 0x70};  // 88:f1:55:32:03:70
 DHT dht(DHT_PIN, DHT22);
 Adafruit_SSD1306 oled(128, 64, &Wire, -1);
 
-typedef struct { float temp; float hum; float target; uint8_t power; uint8_t changed; } TxPacket;
+// DIKKAT: TxPacket alicidaki (alici.ino) ile BIREBIR ayni olmali
+typedef struct { float temp; float hum; float target; uint8_t power; uint8_t changed; uint8_t motion; } TxPacket;
 typedef struct { float target; uint8_t power; uint8_t heating; } RxPacket;
 
-TxPacket tx = {NAN, NAN, 21.0, 1, 0};
+TxPacket tx = {NAN, NAN, 21.0, 1, 0, 0};
+bool motionPending = false, pirWas = false;
 RxPacket rx;
 volatile bool rxFlag = false;
 volatile unsigned long lastReply = 0;
@@ -59,8 +64,27 @@ void onRecv(const uint8_t *mac, const uint8_t *data, int len) {
 void sendNow() {
   tx.temp = temp;
   tx.hum = hum;
+  tx.motion = motionPending ? 1 : 0;
   esp_now_send(aliciMac, (uint8_t *)&tx, sizeof(tx));
+  motionPending = false;   // PIR hala HIGH ise loop() tekrar isaretler
   lastSend = millis();
+}
+
+// PIR: hareket varken isaretle, ilk algilamada paketi hemen gonder (en fazla saniyede 1)
+void handlePir() {
+#if PIR_ENABLED
+  if (millis() < PIR_WARMUP_MS) return;
+  if (digitalRead(PIR_PIN) == HIGH) {
+    motionPending = true;
+    if (!pirWas) {
+      pirWas = true;
+      Serial.println("PIR: hareket");
+      if (millis() - lastSend > 1000) sendNow();
+    }
+  } else {
+    pirWas = false;
+  }
+#endif
 }
 
 void setChannel(uint8_t ch) {
@@ -123,6 +147,9 @@ void draw() {
   oled.setTextSize(1);
   oled.setCursor(0, 0);
   oled.print(isLinked() ? "BAGLI" : "BAGLANTI YOK");
+#if PIR_ENABLED
+  if (pirWas) { oled.setCursor(66, 0); oled.print("*"); }   // hareket algilaniyor
+#endif
   if (heating) { oled.setCursor(86, 0); oled.print("ISITMA"); }
   oled.setTextSize(3);
   oled.setCursor(0, 14);
@@ -138,6 +165,9 @@ void draw() {
 void setup() {
   Serial.begin(115200);
   initButtons();
+#if PIR_ENABLED
+  pinMode(PIR_PIN, INPUT);
+#endif
   dht.begin();
   Wire.begin(21, 22);
   oled.begin(SSD1306_SWITCHCAPVCC, 0x3C);
@@ -158,6 +188,7 @@ void setup() {
 
 void loop() {
   handleButtons();
+  handlePir();
 
 #if DEBUG_PINS
   static unsigned long lastDbg = 0;

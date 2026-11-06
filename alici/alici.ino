@@ -12,14 +12,16 @@
 #include <DNSServer.h>
 #include <Preferences.h>
 
-#define DB_URL    "https://termostat-50c8f-default-rtdb.firebaseio.com"  // sonunda / olmasin
-#define DB_SECRET "Qp3tfUzUHZMEObP5pM85YebarP60gRZ2uQYQGsN1"
+// DB_URL ve DB_SECRET "secrets.h" dosyasindan gelir (GitHub'a YUKLENMEZ, .gitignore'da).
+// Kurulum: secrets.h.example dosyasini secrets.h olarak kopyala, icindeki degerleri doldur.
+#include "secrets.h"
 
 #define RELAY_PIN        26
 #define RELAY_ACTIVE_LOW true   // optokuplorlu role modulleri genelde LOW'da calisir
 #define HYST             0.3    // histerezis (C)
 #define DATA_TIMEOUT_MS  120000 // verici 2 dk susarsa kombi guvenlik icin kapanir
 
+// DIKKAT: TxPacket vericideki (verici.ino) ile BIREBIR ayni olmali
 typedef struct { float temp; float hum; float target; uint8_t power; uint8_t changed; uint8_t motion; } TxPacket;
 typedef struct { float target; uint8_t power; uint8_t heating; } RxPacket;
 
