@@ -83,6 +83,14 @@ void sendReply() {
 
 String dbUrl() { return String(DB_URL) + "/thermostat.json?auth=" + DB_SECRET; }
 
+// Firebase hatasini seri monitore yaz (en fazla 10 sn'de bir). 401/403 = secret/kurallar, negatif = baglanti/SSL
+void logFbErr(const char *what, int code) {
+  static unsigned long last = 0;
+  if (code == 200 || millis() - last < 10000) return;
+  last = millis();
+  Serial.printf("Firebase %s HATA: %d (%s)\n", what, code, code < 0 ? HTTPClient::errorToString(code).c_str() : code == 401 || code == 403 ? "secret yanlis/iptal veya kurallar" : code == 404 ? "DB_URL yanlis" : "?");
+}
+
 bool pushState() {
   WiFiClientSecure c; c.setInsecure();
   HTTPClient h; h.begin(c, dbUrl());
@@ -106,13 +114,16 @@ bool pushState() {
   int code = h.PATCH(body);
   h.end();
   lastPush = millis();
+  logFbErr("yazma", code);
   return code == 200;
 }
 
 void pollState() {
   WiFiClientSecure c; c.setInsecure();
   HTTPClient h; h.begin(c, dbUrl());
-  if (h.GET() == 200) {
+  int getCode = h.GET();
+  logFbErr("okuma", getCode);
+  if (getCode == 200) {
     JsonDocument d;
     if (!deserializeJson(d, h.getString()) && d["targetTemp"].is<float>() && d["power"].is<bool>()) {
       awayEnabled = d["awayEnabled"] | false;
