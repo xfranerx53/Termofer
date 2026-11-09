@@ -56,6 +56,7 @@ const uint8_t btnPins[3] = {BTN_UP, BTN_DOWN, BTN_POWER};
 #if RF_ENABLED
 // --- 433 MHz kumanda: A=+ B=- C=ac/kapa D=RF_D_TEMP. Kodlar ilk acilista kumandadan OGRENILIR ve kalici saklanir ---
 RCSwitch rf; Preferences prefs;
+const unsigned long RF_DEFAULT[4] = {753832, 753828, 753826, 753825};   // senin kumandanin A,B,C,D kodlari (rf_test ile okundu)
 unsigned long rfCode[4] = {0, 0, 0, 0}, rfKeyT[4] = {0, 0, 0, 0}, rfLastVal = 0, rfLastT = 0;
 uint8_t rfCnt = 0; int learnStep = -1;   // -1: normal, 0..3: o tusu ogreniyor
 #endif
@@ -124,7 +125,7 @@ void applyButton(int i) {
 void rfBegin() {
   prefs.begin("rf", false);
   bool ok = true;
-  for (int i = 0; i < 4; i++) { char k[3] = {'k', (char)('0' + i), 0}; rfCode[i] = prefs.getULong(k, 0); if (!rfCode[i]) ok = false; }
+  for (int i = 0; i < 4; i++) { char k[3] = {'k', (char)('0' + i), 0}; rfCode[i] = prefs.getULong(k, RF_DEFAULT[i]); if (!rfCode[i]) ok = false; }
   learnStep = ok ? -1 : 0;
   rf.enableReceive(digitalPinToInterrupt(RF_PIN));
   Serial.printf("RF hazir. %s\n", ok ? "Kumanda kodlari kayitli." : "Kumanda ogrenme modu: once A tusuna bas.");
