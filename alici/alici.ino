@@ -36,6 +36,7 @@ static portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED;
 volatile bool rxFlag = false;
 uint8_t txMac[6];
 bool peerAdded = false;
+unsigned long lastRxMs = 0;
 
 float temp = NAN, hum = NAN, target = 21.0;
 bool power = true, heating = false, dirty = false;
@@ -450,6 +451,10 @@ void setup() {
 
 void loop() {
   wifiTask();
+  { static unsigned long lastDiag = 0;   // Teshis: 5 sn'de bir
+    if (millis() - lastDiag > 5000) { lastDiag = millis();
+      Serial.printf("[durum] wifi=%s kanal=%d rssi=%d sonVericiPaketi=%s%lu ms once\n", WiFi.status() == WL_CONNECTED ? "BAGLI" : "YOK",
+                    WiFi.channel(), WiFi.RSSI(), lastRxMs ? "" : "HIC-GELMEDI ", lastRxMs ? millis() - lastRxMs : 0UL); } }
 
   // Vericiden paket geldi
   if (rxFlag) {
@@ -458,6 +463,7 @@ void loop() {
     in = inBuf;
     rxFlag = false;
     portEXIT_CRITICAL(&mux);
+    lastRxMs = millis();
     if (!peerAdded) {
       esp_now_peer_info_t p = {};
       memcpy(p.peer_addr, txMac, 6);

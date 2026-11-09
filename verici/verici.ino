@@ -140,7 +140,7 @@ void handleRf() {
   unsigned long now = millis();
   if (val == rfLastVal && now - rfLastT < 400) { if (rfCnt < 255) rfCnt++; } else { rfLastVal = val; rfCnt = 1; }
   rfLastT = now;
-  if (rfCnt < 2) return;   // gurultuyu ele: ayni kod ust uste 2 kez gelmeli
+  if (learnStep >= 0 && rfCnt < 2) return;   // sadece OGRENIRKEN gurultuyu ele (2 kez gelmeli); bilinen kod ilk alista calisir
   if (learnStep >= 0) {
     if (rfCnt != 2) return;
     for (int i = 0; i < learnStep; i++) if (rfCode[i] == val) return;   // ayni basisin tekrari
@@ -154,7 +154,7 @@ void handleRf() {
   }
   for (int k = 0; k < 4; k++) {
     if (rfCode[k] != val) continue;
-    if (now - rfKeyT[k] < (k < 2 ? 250UL : 700UL)) return;   // A/B basili tutunca hizli, C/D tek tek
+    if (now - rfKeyT[k] < (k < 2 ? 300UL : 700UL)) return;   // A/B basili tutunca hizli, C/D tek tek
     rfKeyT[k] = now;
     Serial.printf("Kumanda %c\n", 'A' + k);
     if (k < 3) applyButton(k);
@@ -211,7 +211,7 @@ void draw() {
 #endif
   oled.setTextSize(1);
   oled.setCursor(0, 0);
-  oled.print(isLinked() ? "BAGLI" : "BAGLANTI YOK");
+  oled.print(isLinked() ? "BAGLI" : "BAGLANTI YOK"); oled.printf(" K%d", channel);
 #if PIR_ENABLED
   if (pirWas) { oled.setCursor(66, 0); oled.print("*"); }   // hareket algilaniyor
 #endif
@@ -269,6 +269,15 @@ void loop() {
                   digitalRead(BTN_UP), digitalRead(BTN_DOWN), digitalRead(BTN_POWER), tx.target);
   }
 #endif
+
+  // Teshis: 5 sn'de bir baglanti durumu
+  static unsigned long lastDiag = 0; static bool wasLinked = false;
+  if (isLinked() != wasLinked) { wasLinked = isLinked(); Serial.printf(">>> BAGLANTI %s (kanal %d)\n", wasLinked ? "KURULDU" : "KOPTU", channel); }
+  if (millis() - lastDiag > 5000) {
+    lastDiag = millis();
+    Serial.printf("[durum] kanal=%d %s sonCevap=%lu ms once hedef=%.1f\n", channel, isLinked() ? "BAGLI" : "BAGLANTI-YOK",
+                  lastReply ? millis() - lastReply : 0UL, tx.target);
+  }
 
   // Sicaklik oku
   if (millis() - lastRead > 2000) {
