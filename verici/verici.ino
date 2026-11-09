@@ -38,7 +38,7 @@ Adafruit_SSD1306 oled(128, 64, &Wire, -1);
 
 // DIKKAT: TxPacket alicidaki (alici.ino) ile BIREBIR ayni olmali
 typedef struct { float temp; float hum; float target; uint8_t power; uint8_t changed; uint8_t motion; } TxPacket;
-typedef struct { float target; uint8_t power; uint8_t heating; } RxPacket;
+typedef struct { float target; uint8_t power; uint8_t heating; int8_t calib; } RxPacket;   // calib: sensor ofseti, 0.1 C birimi
 
 TxPacket tx = {NAN, NAN, 21.0, 1, 0, 0};
 bool motionPending = false, pirWas = false;
@@ -47,6 +47,8 @@ volatile bool rxFlag = false;
 volatile unsigned long lastReply = 0;
 
 float temp = NAN, hum = NAN;
+int8_t calibTenth = 0;   // uygulamadan gelen DHT22 kalibrasyonu (kalici saklanir)
+Preferences calPrefs;
 bool heating = false;
 uint8_t channel = 1;
 unsigned long lastSend = 0, lastRead = 0, lastPress = 0, lastScan = 0, lastDraw = 0;
@@ -230,6 +232,7 @@ void draw() {
 void setup() {
   Serial.begin(115200);
   initButtons();
+  calPrefs.begin("cal", false); calibTenth = calPrefs.getChar("c", 0);
 #if RF_ENABLED
   rfBegin();
 #endif
@@ -283,7 +286,7 @@ void loop() {
   if (millis() - lastRead > 2000) {
     lastRead = millis();
     float t = dht.readTemperature(), h = dht.readHumidity();
-    if (!isnan(t)) { temp = t + TEMP_OFFSET; hum = h; }
+    if (!isnan(t)) { temp = t + TEMP_OFFSET + calibTenth / 10.0f; hum = h; }
   }
 
   // Aliciden cevap geldi
@@ -291,6 +294,11 @@ void loop() {
     rxFlag = false;
     RxPacket r = rx;
     heating = r.heating;
+    if (r.calib != -128 && r.calib != calibTenth) {   // uygulamadan yeni kalibrasyon geldi: uygula ve sakla
+      calibTenth = r.calib; calPrefs.putChar("c", calibTenth);
+      if (!isnan(temp)) lastRead = 0;   // hemen yeniden olc
+      Serial.printf("Kalibrasyon ofseti: %.1f C\n", calibTenth / 10.0f);
+    }
     if (tx.changed) {
       // Tusla yaptigim degisiklik beklemede: alici AYNI degeri geri dondurene kadar onun degerini KABUL ETME
       if (fabsf(r.target - tx.target) < 0.01f && r.power == tx.power) tx.changed = 0;

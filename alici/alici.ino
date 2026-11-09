@@ -20,7 +20,7 @@
 #define RELAY_ACTIVE_LOW true   // optokuplorlu role modulleri genelde LOW'da calisir
 #define HYST             0.3    // histerezis (C)
 #define DATA_TIMEOUT_MS  120000 // verici 2 dk susarsa kombi guvenlik icin kapanir
-#define FW_VERSION       "1.3"
+#define FW_VERSION       "1.4"
 #define FROST_TEMP       5.0f   // DON KORUMASI: oda bu degerin altina inerse kapali olsa bile kombi calisir
 #define FROST_HYST       1.0f
 #define WINDOW_DROP      1.0f   // PENCERE ACIK: 5 dk'da bu kadar dusus (uygulamadan acilirsa)
@@ -29,7 +29,7 @@
 
 // DIKKAT: TxPacket vericideki (verici.ino) ile BIREBIR ayni olmali
 typedef struct { float temp; float hum; float target; uint8_t power; uint8_t changed; uint8_t motion; } TxPacket;
-typedef struct { float target; uint8_t power; uint8_t heating; } RxPacket;
+typedef struct { float target; uint8_t power; uint8_t heating; int8_t calib; } RxPacket;   // calib: sensor ofseti, 0.1 C birimi
 
 TxPacket inBuf;
 static portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED;
@@ -37,6 +37,7 @@ volatile bool rxFlag = false;
 uint8_t txMac[6];
 bool peerAdded = false;
 unsigned long lastRxMs = 0;
+int8_t calibTenth = -128;   // -128 = henuz Firebase'den okunmadi (verici bu degeri yok sayar). DHT22 kalibrasyon ofseti (uygulamadan), vericiye aktarilir
 
 float temp = NAN, hum = NAN, target = 21.0;
 bool power = true, heating = false, dirty = false;
@@ -98,7 +99,7 @@ void onRecv(const uint8_t *mac, const uint8_t *data, int len) {
     rxFlag = true;
     portEXIT_CRITICAL(&mux);
     if (peerAdded) {   // hemen cevap ver: loop() HTTPS isiyle mesgulken verici "baglanti yok" demesin
-      RxPacket r = {target, (uint8_t)power, (uint8_t)heating};
+      RxPacket r = {target, (uint8_t)power, (uint8_t)heating, calibTenth};
       esp_now_send(mac, (uint8_t *)&r, sizeof(r));
     }
   }
@@ -106,7 +107,7 @@ void onRecv(const uint8_t *mac, const uint8_t *data, int len) {
 
 void sendReply() {
   if (!peerAdded) return;
-  RxPacket r = {target, (uint8_t)power, (uint8_t)heating};
+  RxPacket r = {target, (uint8_t)power, (uint8_t)heating, calibTenth};
   esp_now_send(txMac, (uint8_t *)&r, sizeof(r));
 }
 
@@ -174,6 +175,8 @@ void pollState() {
       awayMinutes = d["awayMinutes"] | 180;
       awayTemp = d["awayTemp"] | 17.0f;
       windowDetect = d["windowDetect"] | false;
+      { float cal = d["calib"] | 0.0f; int8_t ct = (int8_t)constrain((int)lroundf(cal * 10.0f), -50, 50);
+        if (ct != calibTenth) { calibTenth = ct; sendReply(); Serial.printf("Kalibrasyon ofseti: %.1f C\n", ct / 10.0f); } }
       boostUntil = (uint32_t)(d["boostUntil"] | 0UL); boostTemp = d["boostTemp"] | 24.0f;
       holFrom = (uint32_t)(d["holFrom"] | 0UL); holTo = (uint32_t)(d["holTo"] | 0UL); holTemp = d["holTemp"] | 15.0f;
       JsonObject sc = d["sched"];

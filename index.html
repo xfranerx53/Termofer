@@ -108,6 +108,7 @@ input,select{font:inherit;font-size:16px;color:var(--tx);background:#fff;border:
     <button data-go="temps">Sıcaklık Ayarları <i>›</i></button>
     <button data-go="prog">Haftalık Program Ayarları <i>›</i></button>
     <button data-go="boost">Artırma ve Tatil <i>›</i></button>
+    <button data-go="calib">Sensör Kalibrasyonu <i>›</i></button>
     <button data-go="away">Boş Ev Modu <i>›</i></button>
     <button data-go="prot">Koruma ve Maliyet <i>›</i></button>
     <button data-go="homeset">Ev Ayarları <i>›</i></button>
@@ -118,6 +119,19 @@ input,select{font:inherit;font-size:16px;color:var(--tx);background:#fff;border:
   <div class="view sub" id="temps" hidden><div class="card"><p class="mu">Tüm modların hedef sıcaklıklarını buradan ayarlayabilirsiniz.</p><div id="tlist"></div></div><button class="btn" id="saveT">Kaydet</button></div>
 
   <div class="view sub" id="prog" hidden><div class="card"><p class="mu">Hazır bir program seçin ya da kendi saat aralıklarınızı çizin. Program cihazda çalışır, uygulama kapalıyken de uygulanır.</p><div id="plist"></div><button class="btn" id="editC" style="background:#2f80ed;margin-top:10px">Özel programı düzenle</button></div><button class="btn" id="saveP">Kaydet</button></div>
+
+  <div class="view sub" id="calib" hidden>
+    <div class="card" style="display:flex;flex-direction:column;gap:8px"><b>🌡 Şu anki durum</b><div id="cNow"></div><div class="mu" id="cWx">Hava durumu yükleniyor…</div><button class="btn" id="cLoc" style="background:#2f80ed" hidden>Konum seç (Ev Ayarları)</button></div>
+    <div class="card" style="display:flex;flex-direction:column;gap:8px;margin-top:12px"><b>Kalibrasyon ofseti</b><span class="mu">Sensörün gösterdiğine eklenir. Kaydedince cihaz birkaç saniyede uygular ve değeri kalıcı saklar.</span>
+      <div class="row"><span>Ofset</span><span class="st"><button data-co="-1">‹</button><span id="cOff"></span><button data-co="1">›</button></span></div>
+      <button class="btn" id="saveCal">Kaydet</button></div>
+    <div class="card" style="display:flex;flex-direction:column;gap:8px;margin-top:12px"><b>Yöntem 1: Referans termometre <small class="mu">(en doğrusu)</small></b><span class="mu">Sensörün yanına güvenilir bir termometre koy, 15 dakika bekle, okuduğun değeri yaz.</span>
+      <input id="cRef" type="number" inputmode="decimal" step="0.1" placeholder="Gerçek sıcaklık, ör. 21.4"><button class="btn" id="cRefGo" style="background:#2f80ed">Ofseti hesapla</button><div class="mu" id="cRefRes"></div></div>
+    <div class="card" style="display:flex;flex-direction:column;gap:8px;margin-top:12px"><b>Yöntem 2: Dış ortam testi <small class="mu">(yaklaşık)</small></b><span class="mu">Vericiyi 20 dakika gölgede, dışarıda bırak. Sonra bu düğmeye bas; sensör, konumunun hava durumu verisiyle karşılaştırılır.</span>
+      <button class="btn" id="cOutGo" style="background:#2f80ed">Karşılaştır</button><div class="mu" id="cOutRes"></div><button class="btn" id="cOutApply" hidden style="background:#8a8f98">Bu ofseti ayarla</button></div>
+    <div class="card" style="display:flex;flex-direction:column;gap:8px;margin-top:12px"><b>Ev ısı modeli <small class="mu">(verilerinden)</small></b><span class="mu">Son 7 günün iç sıcaklık, kombi ve dış hava kayıtlarından evin ısı kaybı ve ısınma hızı çıkarılır; ısıtma kapalı kalırsa ne olacağı tahmin edilir.</span>
+      <button class="btn" id="cModel" style="background:#2f80ed">Modeli çıkar</button><div id="cModelRes" class="mu"></div></div>
+  </div>
 
   <div class="view sub" id="cust" hidden><div class="card"><p class="mu">Başlangıç saatini ve modu seç. Her satır, bir sonraki satıra kadar geçerlidir. İlk satır 00:00'dır.</p><b>Hafta içi</b><div id="cWd"></div><button class="btn" data-add="wd" style="background:#2f80ed;margin:8px 0 14px">+ Satır ekle</button><b>Hafta sonu</b><div id="cWe"></div><button class="btn" data-add="we" style="background:#2f80ed;margin-top:8px">+ Satır ekle</button></div><button class="btn" id="saveC">Kaydet ve uygula</button></div>
 
@@ -186,7 +200,7 @@ const PROGS = {
   ozel: ["Özel Program", "Kendi saat aralıklarını çiz (hafta içi ve hafta sonu ayrı)", { wd: [], we: [] }],
   konfor: ["Konfor Modu", "Tüm günler 0-7 Uyku, 7-24 Ev", { wd: [[0, "uyku"], [7, "ev"]], we: [[0, "uyku"], [7, "ev"]] }],
 };
-const s = { target: 21, power: true, heating: false, temp: null, hum: null, lastSeen: 0, away: false, lastMotion: 0, awayEnabled: false, awayMinutes: 180, awayTemp: 17, frost: false, windowOpen: false, windowDetect: false, rssi: null, uptime: null, fw: "", progAt: 0, noRise: false, preheat: false, boostOn: false, boostUntil: 0, boostT: 24, holOn: false, holFrom: 0, holTo: 0, holT: 15, health: null };
+const s = { target: 21, power: true, heating: false, temp: null, hum: null, lastSeen: 0, away: false, lastMotion: 0, awayEnabled: false, awayMinutes: 180, awayTemp: 17, frost: false, windowOpen: false, windowDetect: false, rssi: null, uptime: null, fw: "", progAt: 0, noRise: false, preheat: false, boostOn: false, boostUntil: 0, boostT: 24, holOn: false, holFrom: 0, holTo: 0, holT: 15, health: null, calib: 0 };
 const AWAY_MIN = [30, 60, 90, 120, 180, 240, 360, 480, 720];   // dakika
 const cfg = { mode: "manual", preset: "ev", prog: "tasarruf", temps: { ev: 22, uyku: 20, disari: 18, kullanici: 21 }, home: {}, cost: {}, cwd: "0:1,7:0", cwe: "0:1,7:0" };
 let editUntil = 0, lastDb = {}, pend = null, ready = { t: false, c: false }, netOk = true, unsub = [], timer, outT = null, lastBucket = 0, view = "home";
@@ -238,7 +252,7 @@ onAuthStateChanged(auth, user => {
     s.frost = !!v.frost; s.windowOpen = !!v.windowOpen; s.windowDetect = !!v.windowDetect;
     s.rssi = typeof v.rssi === "number" ? v.rssi : null; s.uptime = typeof v.uptime === "number" ? v.uptime : null; s.fw = v.fw || "";
     s.awayEnabled = !!v.awayEnabled; s.awayMinutes = v.awayMinutes || 180; s.awayTemp = typeof v.awayTemp === "number" ? v.awayTemp : 17;
-    s.heating = !!v.heating;
+    s.heating = !!v.heating; s.calib = typeof v.calib === "number" ? v.calib : 0;
     s.noRise = !!v.health?.noRise; s.health = v.health || null; s.preheat = !!v.preheat;
     s.boostOn = !!v.boostOn; s.boostUntil = v.boostUntil || 0; s.boostT = typeof v.boostTemp === "number" ? v.boostTemp : 24;
     s.holOn = !!v.holOn; s.holFrom = v.holFrom || 0; s.holTo = v.holTo || 0; s.holT = typeof v.holTemp === "number" ? v.holTemp : 15;
@@ -479,14 +493,14 @@ function alerts() {
 const toast = t => $("toast").textContent = t;
 
 /* ---------- Sayfalar ---------- */
-const TITLES = { home: "Termofer", menu: "Ayarlar", temps: "Sıcaklık Ayarları", prog: "Haftalık Program Ayarları", away: "Boş Ev Modu", prot: "Koruma ve Maliyet", homeset: "Ev Ayarları", dev: "Cihaz Bilgileri", rep: "Raporlar", boost: "Artırma ve Tatil", cust: "Özel Program" };
+const TITLES = { home: "Termofer", menu: "Ayarlar", temps: "Sıcaklık Ayarları", prog: "Haftalık Program Ayarları", away: "Boş Ev Modu", prot: "Koruma ve Maliyet", homeset: "Ev Ayarları", dev: "Cihaz Bilgileri", rep: "Raporlar", calib: "Sensör Kalibrasyonu", boost: "Artırma ve Tatil", cust: "Özel Program" };
 const PARENT = { menu: "home", rep: "home", cust: "prog" };
 function go(v) {
   view = v;
   Object.keys(TITLES).forEach(k => $(k).hidden = k !== v);
   $("ttl").textContent = TITLES[v]; $("back").style.visibility = v === "home" ? "hidden" : "visible";
   $("hdr").style.visibility = v === "home" ? "visible" : "hidden";
-  if (v === "temps") tempsView(); if (v === "prog") progView(); if (v === "away") awayView(); if (v === "prot") protView(); if (v === "homeset") homeView(); if (v === "dev") devInfo(); if (v === "rep") report(); if (v === "boost") boostView(); if (v === "cust") custView();
+  if (v === "temps") tempsView(); if (v === "prog") progView(); if (v === "away") awayView(); if (v === "prot") protView(); if (v === "homeset") homeView(); if (v === "dev") devInfo(); if (v === "rep") report(); if (v === "boost") boostView(); if (v === "calib") calibView(); if (v === "cust") custView();
   scrollTo(0, 0); render();
 }
 $("back").onclick = () => go(PARENT[view] || "menu");
@@ -538,6 +552,114 @@ $("saveC").onclick = () => {
   cfg.cwd = str(ce.wd); cfg.cwe = str(ce.we); cfg.prog = "ozel";
   saveCfg({ cwd: cfg.cwd, cwe: cfg.cwe, prog: "ozel" }); applyProgram(true); go("prog");
 };
+
+/* ---------- Sensör kalibrasyonu, hava durumu, ev ısı modeli ---------- */
+const WXN = { 0: "Açık", 1: "Çoğunlukla açık", 2: "Parçalı bulutlu", 3: "Kapalı", 45: "Sisli", 48: "Sisli", 51: "Çiseleme", 53: "Çiseleme", 55: "Çiseleme", 61: "Yağmurlu", 63: "Yağmurlu", 65: "Şiddetli yağmur", 71: "Karlı", 73: "Karlı", 75: "Yoğun kar", 80: "Sağanak", 81: "Sağanak", 82: "Şiddetli sağanak", 95: "Gök gürültülü fırtına" };
+const r1 = x => Math.round(x * 10) / 10, clampC = x => Math.min(5, Math.max(-5, r1(x))), sg = x => (x > 0 ? "+" : "") + fmt(x, 1);
+let cal = { off: 0, sug: null };
+async function wxNow() {
+  const { lat, lon } = cfg.home; if (lat == null) return null;
+  const r = await (await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,wind_speed_10m,weather_code&timezone=auto`)).json();
+  return r.current;
+}
+function drawCal() {
+  $("cOff").textContent = sg(cal.off) + "°";
+  $("cNow").innerHTML = `Sensör şu an <b>${s.temp == null ? "--" : fmt(s.temp) + "°"}</b> gösteriyor (kayıtlı ofset ${sg(s.calib)}° dahil). Cihaz ${online() ? "çevrimiçi" : "<b>çevrimdışı</b>: önce cihazın bağlanması lazım"}.`;
+}
+async function calibView() {
+  cal = { off: Math.min(5, Math.max(-5, s.calib)), sug: null };
+  ["cRefRes", "cOutRes", "cModelRes"].forEach(i => $(i).textContent = ""); $("cOutApply").hidden = true;
+  $("cLoc").hidden = cfg.home.lat != null; drawCal();
+  if (cfg.home.lat == null) return $("cWx").textContent = "Hava durumu için önce evin konumunu seç.";
+  $("cWx").textContent = "Hava durumu yükleniyor…";
+  try { const w = await wxNow(); $("cWx").innerHTML = `📍 ${cfg.home.place || cfg.home.name || "Ev konumu"}: <b>${fmt(w.temperature_2m)}°</b> · nem %${fmt(w.relative_humidity_2m, 0)} · rüzgâr ${fmt(w.wind_speed_10m, 0)} km/sa · ${WXN[w.weather_code] || ""}`; }
+  catch { $("cWx").textContent = "Hava durumu alınamadı. İnterneti kontrol et."; }
+}
+$("calib").onclick = async e => {
+  const b = e.target.closest("button"); if (!b) return;
+  if (b.dataset.co) { cal.off = clampC(cal.off + b.dataset.co * 0.1); drawCal(); }
+  if (b.id === "cLoc") go("homeset");
+  if (b.id === "saveCal") dbSet({ calib: cal.off }, `Kalibrasyon kaydedildi: ${sg(cal.off)}°`);
+  if (b.id === "cRefGo") {
+    const x = parseFloat(String($("cRef").value).replace(",", "."));
+    if (!isFinite(x) || x < -20 || x > 60) return $("cRefRes").textContent = "Geçerli bir sıcaklık yaz.";
+    if (s.temp == null || !online()) return $("cRefRes").textContent = "Cihaz çevrimdışı, güncel ölçüm yok.";
+    cal.off = clampC(s.calib + x - s.temp); drawCal();
+    $("cRefRes").textContent = `Sensör ${fmt(s.temp)}° gösteriyor, gerçek ${fmt(x)}°. Gereken ofset ${sg(cal.off)}°. Yukarıdan Kaydet'e bas.`;
+  }
+  if (b.id === "cOutGo") {
+    if (cfg.home.lat == null) return $("cOutRes").textContent = "Önce evin konumunu seç.";
+    if (s.temp == null || !online()) return $("cOutRes").textContent = "Cihaz çevrimdışı, güncel ölçüm yok.";
+    $("cOutRes").textContent = "Karşılaştırılıyor…";
+    try {
+      const w = await wxNow(), diff = w.temperature_2m - s.temp; cal.sug = clampC(s.calib + diff);
+      $("cOutRes").innerHTML = `Hava durumu: <b>${fmt(w.temperature_2m)}°</b>, sensör: <b>${fmt(s.temp)}°</b>. Önerilen ofset: <b>${sg(cal.sug)}°</b>.<br>Belirsizlik yaklaşık ±1 °C. Hava durumu verisi en yakın istasyondan/modelden gelir; sensör güneşte, duvara yakın ya da henüz dengelenmediyse hata artar. Bu yüzden sadece büyük sapmaları yakalamak için kullan, ince ayar için Yöntem 1'i seç.`;
+      $("cOutApply").hidden = false;
+    } catch { $("cOutRes").textContent = "Hava durumu alınamadı."; }
+  }
+  if (b.id === "cOutApply" && cal.sug != null) { cal.off = cal.sug; drawCal(); $("cOutRes").innerHTML += "<br><b>Ofset ayarlandı, yukarıdan Kaydet'e bas.</b>"; }
+  if (b.id === "cModel") runModel();
+};
+// En küçük kareler: ΔT = a·(Tdış−T) + b·ısıtma + c   (10 dk adımları)
+function fit3(X, y) {
+  const A = [[0, 0, 0], [0, 0, 0], [0, 0, 0]], B = [0, 0, 0];
+  X.forEach((r, i) => { for (let p = 0; p < 3; p++) { B[p] += r[p] * y[i]; for (let q = 0; q < 3; q++) A[p][q] += r[p] * r[q]; } });
+  const M = A.map((r, i) => [...r, B[i]]);
+  for (let i = 0; i < 3; i++) {
+    let mx = i; for (let j = i + 1; j < 3; j++) if (Math.abs(M[j][i]) > Math.abs(M[mx][i])) mx = j;
+    [M[i], M[mx]] = [M[mx], M[i]];
+    if (Math.abs(M[i][i]) < 1e-9) return null;
+    for (let j = i + 1; j < 3; j++) { const f = M[j][i] / M[i][i]; for (let k = i; k < 4; k++) M[j][k] -= f * M[i][k]; }
+  }
+  const x = [0, 0, 0];
+  for (let i = 2; i >= 0; i--) { let t = M[i][3]; for (let k = i + 1; k < 3; k++) t -= M[i][k] * x[k]; x[i] = t / M[i][i]; }
+  return x;
+}
+async function runModel() {
+  const out = $("cModelRes"), { lat, lon } = cfg.home;
+  if (lat == null) return out.textContent = "Önce evin konumunu seç.";
+  out.textContent = "Hesaplanıyor…";
+  const end = Date.now(), from = end - 7 * 864e5, rows = [];
+  try {
+    (await get(query(ref(db, "termofer/history"), orderByKey(), startAt(key(from / 600000 | 0)), endAt(key(end / 600000 | 0))))).forEach(c => { rows.push({ k: +c.key, ...c.val() }); });
+  } catch (e) { return out.textContent = "Kayıtlar okunamadı: " + e.code; }
+  let outs = [];
+  try {
+    const r = await (await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=temperature_2m&past_days=7&forecast_days=2&timezone=GMT`)).json();
+    outs = r.hourly.time.map((t, i) => ({ ts: Date.parse(t + "Z"), v: r.hourly.temperature_2m[i] })).filter(o => o.v != null);
+  } catch { return out.textContent = "Dış hava verisi alınamadı."; }
+  if (outs.length < 48) return out.textContent = "Dış hava verisi yetersiz.";
+  const o0 = outs[0].ts, outAt = ts => { const f = (ts - o0) / 36e5, i = Math.floor(f); if (i < 0 || i + 1 >= outs.length) return null; return outs[i].v + (outs[i + 1].v - outs[i].v) * (f - i); };
+  const byK = new Map(rows.map(r => [r.k, r])), X = [], y = [];
+  for (const r of rows) {
+    const n = byK.get(r.k + 1); if (!n || r.t == null || n.t == null) continue;
+    const to = outAt(r.k * 600000); if (to == null) continue;
+    const d = n.t - r.t; if (Math.abs(d) > 0.8) continue;      // pencere/arıza gibi aykırı sıçramaları at
+    X.push([to - r.t, r.o === 1 ? 1 : 0, 1]); y.push(d);
+  }
+  const heat = X.filter(r => r[1] === 1).length;
+  if (X.length < 300 || heat < 30 || X.length - heat < 100) return out.textContent = `Yeterli veri yok (${X.length} kayıt, ${heat} ısıtmalı). Kayıtlar 10 dakikada bir tutulur; cihaz yeni yazılımla çalıştıktan birkaç gün sonra tekrar dene.`;
+  const c = fit3(X, y); if (!c) return out.textContent = "Model çıkarılamadı.";
+  const [a, b, k] = c;
+  if (a < 5e-4 || a > .3 || b <= 0) return out.textContent = "Veriler tutarlı bir model vermedi (ısıtma etkisi ya da ısı kaybı ölçülemedi). Daha çok veri gerekli.";
+  const mean = y.reduce((p, q) => p + q, 0) / y.length; let sst = 0, sse = 0;
+  X.forEach((r, i) => { const pr = a * r[0] + b * r[1] + k; sst += (y[i] - mean) ** 2; sse += (y[i] - pr) ** 2; });
+  const r2 = sst > 0 ? 1 - sse / sst : 0, tau = 10 / a / 60, rate = b * 6;
+  const conf = X.length >= 700 && heat >= 100 && r2 >= .2 ? "Yüksek" : r2 >= .08 ? "Orta" : "Düşük";
+  let html = `<div class="row"><span>Isı kaybı zaman sabiti</span><b>${fmt(tau, 1)} saat</b></div><div class="row"><span>Isıtma etkisi</span><b>+${fmt(rate, 2)} °C/saat</b></div><div class="row"><span>Model güveni</span><b>${conf} (R² ${fmt(r2, 2)}, ${X.length} kayıt)</b></div>`;
+  if (s.temp != null && online()) {
+    const now = Date.now(); let T = s.temp; const at = {}, fin = [];
+    for (let m = 10; m <= 360; m += 10) { const to = outAt(now + m * 6e4); if (to == null) break; T += a * (to - T) + k; if (m === 180 || m === 360) at[m] = T; }
+    html += `<div class="row"><span>Isıtma kapalı kalırsa</span><b>${at[180] != null ? "3 sa: " + fmt(at[180]) + "°" : "--"}${at[360] != null ? " · 6 sa: " + fmt(at[360]) + "°" : ""}</b></div>`;
+    if (s.power && s.target > s.temp + .2) {
+      let T2 = s.temp, mins = null;
+      for (let m = 10; m <= 360; m += 10) { const to = outAt(now + m * 6e4); if (to == null) break; T2 += a * (to - T2) + b + k; if (T2 >= s.target) { mins = m; break; } }
+      html += `<div class="row"><span>${fmt(s.target)}° hedefe tahmini süre</span><b>${mins == null ? "6 saatte ulaşılamaz" : mins < 60 ? mins + " dk" : Math.floor(mins / 60) + " sa " + (mins % 60) + " dk"}</b></div>`;
+    }
+  }
+  html += `<p class="mu">Bu model evin davranışını anlatır; sensörün sabit sapmasını (ofset) <b>hesaplayamaz</b>, çünkü sabit bir sapma ısınma/soğuma şeklini değiştirmez. Ofseti Yöntem 1 ya da 2 ile ayarla. Sensör gürültüsü yüzünden değerler yaklaşık %10 sapabilir.</p>`;
+  out.innerHTML = html;
+}
 
 /* ---------- Geçici artırma ve tatil ---------- */
 let bo = { t: 24, h: 15 };
