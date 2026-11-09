@@ -1,4 +1,4 @@
-const CACHE = "termofer-v4";
+const CACHE = "termofer-v5";
 const SHELL = ["./", "index.html", "manifest.webmanifest", "icon-192.png", "icon-512.png", "favicon.png", "apple-touch-icon.png"];
 
 self.addEventListener("install", e => {
