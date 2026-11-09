@@ -9,6 +9,8 @@
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 #include <DHT.h>
+#include <RCSwitch.h>     // Kutuphane Yoneticisi: "rc-switch" (sui77)
+#include <Preferences.h>
 
 // !!! ALICI ESP32'nin MAC adresini yaz (alici acilista Serial'e yazdirir)
 uint8_t aliciMac[] = {0x88, 0xF1, 0x55, 0x32, 0x03, 0x70};  // 88:f1:55:32:03:70
@@ -20,6 +22,9 @@ uint8_t aliciMac[] = {0x88, 0xF1, 0x55, 0x32, 0x03, 0x70};  // 88:f1:55:32:03:70
 #define PIR_ENABLED 1  // 0: PIR yok / kapali
 #define PIR_PIN   27   // HC-SR501 OUT pini (VCC=5V veya 3.3V, GND=GND). Hareket varken HIGH
 #define PIR_WARMUP_MS 60000  // sensor acilista ~1 dk kararsiz: bu sure hareket sayilmaz
+#define RF_ENABLED 1   // 0: 433 MHz kumanda alicisi yok / kapali
+#define RF_PIN 13      // RF alici modulunun DATA pini
+#define RF_D_TEMP 22.0f  // D tusu: bu sicakliga ayarla ve ac
 #define TEMP_OFFSET 0.0f  // sensor kalibrasyonu: gercek termometreyle fark varsa buraya yaz (ornek -0.7)
 #define TEMP_MIN  10.0f
 #define TEMP_MAX  30.0f
@@ -47,6 +52,13 @@ uint8_t channel = 1;
 unsigned long lastSend = 0, lastRead = 0, lastPress = 0, lastScan = 0, lastDraw = 0;
 unsigned long btnLast[3] = {0, 0, 0};
 const uint8_t btnPins[3] = {BTN_UP, BTN_DOWN, BTN_POWER};
+
+#if RF_ENABLED
+// --- 433 MHz kumanda: A=+ B=- C=ac/kapa D=RF_D_TEMP. Kodlar ilk acilista kumandadan OGRENILIR ve kalici saklanir ---
+RCSwitch rf; Preferences prefs;
+unsigned long rfCode[4] = {0, 0, 0, 0}, rfKeyT[4] = {0, 0, 0, 0}, rfLastVal = 0, rfLastT = 0;
+uint8_t rfCnt = 0; int learnStep = -1;   // -1: normal, 0..3: o tusu ogreniyor
+#endif
 
 bool isLinked() { return millis() - lastReply < 20000 && lastReply != 0; }
 
@@ -108,6 +120,49 @@ void applyButton(int i) {
   sendNow();
 }
 
+#if RF_ENABLED
+void rfBegin() {
+  prefs.begin("rf", false);
+  bool ok = true;
+  for (int i = 0; i < 4; i++) { char k[3] = {'k', (char)('0' + i), 0}; rfCode[i] = prefs.getULong(k, 0); if (!rfCode[i]) ok = false; }
+  learnStep = ok ? -1 : 0;
+  rf.enableReceive(digitalPinToInterrupt(RF_PIN));
+  Serial.printf("RF hazir. %s\n", ok ? "Kumanda kodlari kayitli." : "Kumanda ogrenme modu: once A tusuna bas.");
+}
+
+void handleRf() {
+  if (Serial.available() && Serial.read() == 'L') { learnStep = 0; Serial.println("RF ogrenme basladi: A tusuna bas"); }
+  if (!rf.available()) return;
+  unsigned long val = rf.getReceivedValue(); unsigned int bits = rf.getReceivedBitlength();
+  unsigned int proto = rf.getReceivedProtocol(); rf.resetAvailable();
+  if (val == 0 || bits < 12) return;
+  unsigned long now = millis();
+  if (val == rfLastVal && now - rfLastT < 400) { if (rfCnt < 255) rfCnt++; } else { rfLastVal = val; rfCnt = 1; }
+  rfLastT = now;
+  if (rfCnt < 2) return;   // gurultuyu ele: ayni kod ust uste 2 kez gelmeli
+  if (learnStep >= 0) {
+    if (rfCnt != 2) return;
+    for (int i = 0; i < learnStep; i++) if (rfCode[i] == val) return;   // ayni basisin tekrari
+    rfCode[learnStep] = val;
+    Serial.printf("Tus %c ogrenildi: %lu (%u bit, protokol %u)\n", 'A' + learnStep, val, bits, proto);
+    if (++learnStep >= 4) {
+      for (int i = 0; i < 4; i++) { char k[3] = {'k', (char)('0' + i), 0}; prefs.putULong(k, rfCode[i]); }
+      learnStep = -1; Serial.println("Kumanda kaydedildi.");
+    }
+    return;
+  }
+  for (int k = 0; k < 4; k++) {
+    if (rfCode[k] != val) continue;
+    if (now - rfKeyT[k] < (k < 2 ? 250UL : 700UL)) return;   // A/B basili tutunca hizli, C/D tek tek
+    rfKeyT[k] = now;
+    Serial.printf("Kumanda %c\n", 'A' + k);
+    if (k < 3) applyButton(k);
+    else { tx.target = RF_D_TEMP; tx.power = 1; tx.changed = 1; lastPress = millis(); sendNow(); }
+    return;
+  }
+}
+#endif
+
 void initButtons() {
   for (int i = 0; i < 3; i++)
     pinMode(btnPins[i], BTN_POLARITY == 1 ? INPUT_PULLDOWN : BTN_POLARITY == 2 ? INPUT_PULLUP : INPUT);
@@ -145,6 +200,14 @@ void handleButtons() {
 void draw() {
   oled.clearDisplay();
   oled.setTextColor(WHITE);
+#if RF_ENABLED
+  if (learnStep >= 0) {
+    oled.setTextSize(1); oled.setCursor(0, 0); oled.print("KUMANDA OGRENME");
+    oled.setTextSize(2); oled.setCursor(0, 22); oled.printf("%c tusuna", 'A' + learnStep);
+    oled.setCursor(0, 42); oled.print("bas");
+    oled.display(); return;
+  }
+#endif
   oled.setTextSize(1);
   oled.setCursor(0, 0);
   oled.print(isLinked() ? "BAGLI" : "BAGLANTI YOK");
@@ -166,6 +229,9 @@ void draw() {
 void setup() {
   Serial.begin(115200);
   initButtons();
+#if RF_ENABLED
+  rfBegin();
+#endif
 #if PIR_ENABLED
   pinMode(PIR_PIN, INPUT_PULLDOWN);   // bagli degilse kayan pin sahte hareket uretmesin
 #endif
@@ -190,6 +256,9 @@ void setup() {
 void loop() {
   handleButtons();
   handlePir();
+#if RF_ENABLED
+  handleRf();
+#endif
 
 #if DEBUG_PINS
   static unsigned long lastDbg = 0;
