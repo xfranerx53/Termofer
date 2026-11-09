@@ -24,9 +24,9 @@ uint8_t aliciMac[] = {0x88, 0xF1, 0x55, 0x32, 0x03, 0x70};  // 88:f1:55:32:03:70
 #define TEMP_MIN  10.0f
 #define TEMP_MAX  30.0f
 #define TEMP_STEP 0.5f
-#define BTN_POLARITY 0   // 0: OTOMATIK (acilista tuslara DOKUNMA; bosta okunan seviye "basilmamis" kabul edilir)  1: basinca HIGH  2: basinca LOW
+#define BTN_POLARITY 2   // 0: OTOMATIK (acilista tuslara DOKUNMA; bosta okunan seviye "basilmamis" kabul edilir)  1: basinca HIGH  2: basinca LOW
 #define HOLD_REPEAT 0   // 1 yaparsan artir/azalt basili tutunca tekrar eder
-#define DEBUG_PINS  1   // Serial'e saniyede bir tus pin durumlarini yazar (ham deger; basili seviye BTN_ACTIVE_HIGH'a gore degisir)
+#define DEBUG_PINS  0   // Serial'e saniyede bir tus pin durumlarini yazar (ham deger; basili seviye BTN_ACTIVE_HIGH'a gore degisir)
 
 DHT dht(DHT_PIN, DHT22);
 Adafruit_SSD1306 oled(128, 64, &Wire, -1);
@@ -48,7 +48,7 @@ unsigned long lastSend = 0, lastRead = 0, lastPress = 0, lastScan = 0, lastDraw 
 unsigned long btnLast[3] = {0, 0, 0};
 const uint8_t btnPins[3] = {BTN_UP, BTN_DOWN, BTN_POWER};
 
-bool isLinked() { return millis() - lastReply < 8000 && lastReply != 0; }
+bool isLinked() { return millis() - lastReply < 20000 && lastReply != 0; }
 
 #if ESP_ARDUINO_VERSION_MAJOR >= 3
 void onRecv(const esp_now_recv_info_t *info, const uint8_t *data, int len) {
@@ -167,7 +167,7 @@ void setup() {
   Serial.begin(115200);
   initButtons();
 #if PIR_ENABLED
-  pinMode(PIR_PIN, INPUT);
+  pinMode(PIR_PIN, INPUT_PULLDOWN);   // bagli degilse kayan pin sahte hareket uretmesin
 #endif
   dht.begin();
   Wire.begin(21, 22);
@@ -223,7 +223,7 @@ void loop() {
 
   // Baglanti yoksa kanal tara (alici router kanalinda calisir), varsa 2 sn'de bir gonder
   if (!isLinked()) {
-    if (millis() - lastScan > 900) { lastScan = millis(); channel = channel % 13 + 1; setChannel(channel); }
+    if (millis() - lastScan > 1500) { lastScan = millis(); channel = channel % 13 + 1; setChannel(channel); }
     if (millis() - lastSend > 300) sendNow();
   } else if (millis() - lastSend > (tx.changed ? 250 : 2000)) {   // bekleyen degisiklik onaylanana kadar 250 ms'de bir tekrar gonder
     sendNow();

@@ -72,6 +72,10 @@ void onRecv(const uint8_t *mac, const uint8_t *data, int len) {
     memcpy(txMac, mac, 6);
     rxFlag = true;
     portEXIT_CRITICAL(&mux);
+    if (peerAdded) {   // hemen cevap ver: loop() HTTPS isiyle mesgulken verici "baglanti yok" demesin
+      RxPacket r = {target, (uint8_t)power, (uint8_t)heating};
+      esp_now_send(mac, (uint8_t *)&r, sizeof(r));
+    }
   }
 }
 
@@ -80,6 +84,15 @@ void sendReply() {
   RxPacket r = {target, (uint8_t)power, (uint8_t)heating};
   esp_now_send(txMac, (uint8_t *)&r, sizeof(r));
 }
+
+// Tek ortak TLS baglantisi: her istekte yeniden el sikismak 1-3 sn suruyordu
+WiFiClientSecure fbc; bool fbcInit = false;
+void fbBegin(HTTPClient &h, const String &url) {
+  if (!fbcInit) { fbc.setInsecure(); fbcInit = true; }
+  h.setReuse(true); h.setConnectTimeout(3000); h.setTimeout(4000);
+  h.begin(fbc, url);
+}
+void fbEnd(HTTPClient &h, int code) { h.end(); if (code < 0) fbc.stop(); }
 
 String dbUrl() { return String(DB_URL) + "/thermostat.json?auth=" + DB_SECRET; }
 
@@ -92,8 +105,7 @@ void logFbErr(const char *what, int code) {
 }
 
 bool pushState() {
-  WiFiClientSecure c; c.setInsecure();
-  HTTPClient h; h.begin(c, dbUrl());
+  HTTPClient h; fbBegin(h, dbUrl());
   h.addHeader("Content-Type", "application/json");
   JsonDocument d;
   d["targetTemp"] = target;
@@ -112,15 +124,14 @@ bool pushState() {
   d["fw"] = FW_VERSION;
   String body; serializeJson(d, body);
   int code = h.PATCH(body);
-  h.end();
+  fbEnd(h, code);
   lastPush = millis();
   logFbErr("yazma", code);
   return code == 200;
 }
 
 void pollState() {
-  WiFiClientSecure c; c.setInsecure();
-  HTTPClient h; h.begin(c, dbUrl());
+  HTTPClient h; fbBegin(h, dbUrl());
   int getCode = h.GET();
   logFbErr("okuma", getCode);
   if (getCode == 200) {
@@ -154,7 +165,7 @@ void pollState() {
       }
     }
   }
-  h.end();
+  fbEnd(h, getCode);
 }
 
 void enterAway() {
@@ -237,32 +248,30 @@ void logHistory() {
   if (now < 1700000000 || isnan(temp)) return;
   uint32_t b = (uint32_t)now / 600;
   if (b == lastBucket) return;
-  char path[96]; snprintf(path, sizeof(path), "%s/termofer/history/%08u.json?auth=%s", DB_URL, (unsigned)b, DB_SECRET);
-  WiFiClientSecure c; c.setInsecure();
-  HTTPClient h; h.begin(c, path);
+  char kova[12]; snprintf(kova, sizeof(kova), "%08u", (unsigned)b);
+  HTTPClient h; fbBegin(h, String(DB_URL) + "/termofer/history/" + kova + ".json?auth=" + DB_SECRET);
   h.addHeader("Content-Type", "application/json");
   JsonDocument d;
   d["t"] = temp; if (!isnan(hum)) d["h"] = hum;
   d["g"] = target; d["o"] = heating ? 1 : 0;
   String body; serializeJson(d, body);
   int code = h.PUT(body);
-  h.end();
+  fbEnd(h, code);
+  logFbErr("gecmis", code);
   if (code == 200) lastBucket = b;
 }
 
 // Verici tusuyla programdan cikildi: uygulama kapali olsa bile modu "manual" yap
 void pushModeManual() {
-  WiFiClientSecure c; c.setInsecure();
-  HTTPClient h; h.begin(c, String(DB_URL) + "/termofer.json?auth=" + DB_SECRET);
+  HTTPClient h; fbBegin(h, String(DB_URL) + "/termofer.json?auth=" + DB_SECRET);
   h.addHeader("Content-Type", "application/json");
   int code = h.PATCH("{\"mode\":\"manual\"}");
-  h.end();
+  fbEnd(h, code);
   if (code != 200) return;
-  WiFiClientSecure c2; c2.setInsecure();
-  HTTPClient h2; h2.begin(c2, String(DB_URL) + "/thermostat/sched.json?auth=" + DB_SECRET);
+  HTTPClient h2; fbBegin(h2, String(DB_URL) + "/thermostat/sched.json?auth=" + DB_SECRET);
   h2.addHeader("Content-Type", "application/json");
   code = h2.PATCH("{\"mode\":\"manual\"}");
-  h2.end();
+  fbEnd(h2, code);
   if (code == 200) needModePush = false;
 }
 
