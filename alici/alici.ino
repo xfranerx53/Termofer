@@ -20,7 +20,7 @@
 #define RELAY_ACTIVE_LOW true   // optokuplorlu role modulleri genelde LOW'da calisir
 #define HYST             0.3    // histerezis (C)
 #define DATA_TIMEOUT_MS  120000 // verici 2 dk susarsa kombi guvenlik icin kapanir
-#define FW_VERSION       "1.2"
+#define FW_VERSION       "1.3"
 #define FROST_TEMP       5.0f   // DON KORUMASI: oda bu degerin altina inerse kapali olsa bile kombi calisir
 #define FROST_HYST       1.0f
 #define WINDOW_DROP      1.0f   // PENCERE ACIK: 5 dk'da bu kadar dusus (uygulamadan acilirsa)
@@ -60,6 +60,30 @@ float schedTemps[3] = {22.0f, 20.0f, 18.0f};   // ev, uyku, disari
 bool schedValid = false, needModePush = false;
 uint32_t progAt = 0, lastBucket = 0;
 unsigned long lastProg = 0;
+
+// Kombi sagligi + ogrenen on isitma + gecici artirma (boost) + tatil modu
+unsigned long heatStartMs = 0; float heatStartTemp = NAN;
+bool noRise = false, preheat = false;
+uint32_t heatSecToday = 0, cyclesToday = 0; int healthDay = -1;
+float heatRate = 1.5f;                     // oda isinma hizi C/saat (isitirken olculur, ogrenilir)
+uint32_t boostUntil = 0, boostSeen = 0, holFrom = 0, holTo = 0;
+float boostTemp = 24.0f, holTemp = 15.0f, boostPrev = 21.0f, holPrev = 21.0f;
+bool boostActive = false, holActive = false;
+
+// Ozel program (uygulamada cizilir): "saat:mod,saat:mod" ornek "0:1,7.5:2,18:0"  (mod 0=ev 1=uyku 2=disari)
+struct CSeg { float h; uint8_t m; };
+CSeg cWd[8], cWe[8]; int cWdN = 0, cWeN = 0;
+int parseSegs(const char *s, CSeg *out) {
+  int n = 0;
+  while (s && *s && n < 8) {
+    char *e; float h = strtof(s, &e);
+    if (e == s || *e != ':') break;
+    out[n].h = h; out[n].m = (uint8_t)constrain(atoi(e + 1), 0, 2); n++;
+    const char *c = strchr(e, ','); if (!c) break;
+    s = c + 1;
+  }
+  return n;
+}
 
 #if ESP_ARDUINO_VERSION_MAJOR >= 3
 void onRecv(const esp_now_recv_info_t *info, const uint8_t *data, int len) {
@@ -123,6 +147,14 @@ bool pushState() {
   d["rssi"] = WiFi.RSSI();
   d["uptime"] = (uint32_t)(millis() / 1000);
   d["fw"] = FW_VERSION;
+  JsonObject hl = d["health"].to<JsonObject>();
+  hl["noRise"] = noRise;
+  hl["runMin"] = (heatSecToday + (heating ? (millis() - heatStartMs) / 1000 : 0)) / 60;
+  hl["cycles"] = cyclesToday;
+  hl["rate"] = heatRate;
+  d["preheat"] = preheat;
+  d["boostOn"] = boostActive;
+  d["holOn"] = holActive;
   String body; serializeJson(d, body);
   int code = h.PATCH(body);
   fbEnd(h, code);
@@ -142,6 +174,8 @@ void pollState() {
       awayMinutes = d["awayMinutes"] | 180;
       awayTemp = d["awayTemp"] | 17.0f;
       windowDetect = d["windowDetect"] | false;
+      boostUntil = (uint32_t)(d["boostUntil"] | 0UL); boostTemp = d["boostTemp"] | 24.0f;
+      holFrom = (uint32_t)(d["holFrom"] | 0UL); holTo = (uint32_t)(d["holTo"] | 0UL); holTemp = d["holTemp"] | 15.0f;
       JsonObject sc = d["sched"];
       if (!sc.isNull()) {
         const char *m = sc["mode"] | "manual"; schedMode = m;
@@ -149,6 +183,8 @@ void pollState() {
         schedTemps[0] = sc["temps"]["ev"] | 22.0f;
         schedTemps[1] = sc["temps"]["uyku"] | 20.0f;
         schedTemps[2] = sc["temps"]["disari"] | 18.0f;
+        cWdN = parseSegs(sc["cwd"] | "", cWd);
+        cWeN = parseSegs(sc["cwe"] | "", cWe);
         schedValid = true;
       }
       float t = d["targetTemp"]; bool p = d["power"];
@@ -160,6 +196,7 @@ void pollState() {
         firstPoll = false;
       } else if (fabs(t - target) > 0.01 || p != power) {   // uygulamadan degisiklik geldi
         target = t; power = p;
+        boostActive = false;                 // elle degisti: gecici artirma biter
         if (away) away = false;              // kullanici elle degistirdi: bos ev modundan cik
         sendReply();                         // vericiye ilet
         Serial.printf("Uygulamadan: hedef=%.1f power=%d\n", target, power);
@@ -197,7 +234,23 @@ void updateRelay() {
   bool level = RELAY_ACTIVE_LOW ? !heating : heating;
   digitalWrite(RELAY_PIN, level ? HIGH : LOW);
   if (prevFrost != frost) dirty = true;
-  if (prev != heating) { dirty = true; sendReply(); }
+  if (prev != heating) {
+    if (heating) { heatStartMs = millis(); heatStartTemp = temp; cyclesToday++; }
+    else {
+      unsigned long dur = millis() - heatStartMs;
+      heatSecToday += dur / 1000;
+      if (dur >= 900000UL && !windowOpen && !frost && !isnan(temp) && !isnan(heatStartTemp)) {   // >=15 dk surmus isitma: isinma hizini ogren
+        float r = (temp - heatStartTemp) / (dur / 3600000.0f);
+        if (r >= 0.2f && r <= 8.0f) { heatRate = constrain(heatRate * 0.7f + r * 0.3f, 0.3f, 6.0f); Serial.printf("Isinma hizi ogrenildi: %.2f C/saat\n", heatRate); }
+      }
+      noRise = false;
+    }
+    dirty = true; sendReply();
+  }
+  // Kombi sagligi: 40 dk surekli isitiyor ama sicaklik 0.3 C bile artmadiysa ariza/gaz yok uyarisi
+  if (heating && !frost && !isnan(temp) && !isnan(heatStartTemp) && millis() - heatStartMs > 2400000UL && temp - heatStartTemp < 0.3f) {
+    if (!noRise) { noRise = true; dirty = true; Serial.println("UYARI: isitiyor ama sicaklik artmiyor (kombi/gaz?)"); }
+  }
 }
 
 // Pencere acik algilama: dakikada bir ornek, 5 dk'da WINDOW_DROP kadar dusus -> isitma 20 dk durur
@@ -220,6 +273,13 @@ const Seg TAS_WD[] = {{0,1},{7,2},{18,0}}, TAS_WE[] = {{0,1},{9,0}};
 const Seg IS_WD[]  = {{0,1},{7,0},{9,2},{18,0}}, IS_WE[] = {{0,1},{9,0}};
 const Seg KON[]    = {{0,1},{7,0}};
 int progModeIdx(const String &p, bool we, float h) {
+  if (p == "ozel") {
+    const CSeg *c = we ? cWe : cWd; int cn = we ? cWeN : cWdN;
+    if (cn == 0) return 0;
+    int m = c[0].m;
+    for (int i = 0; i < cn; i++) if (c[i].h <= h) m = c[i].m;
+    return m;
+  }
   const Seg *s; int n;
   if (p == "is") { if (we) { s = IS_WE; n = 2; } else { s = IS_WD; n = 4; } }
   else if (p == "konfor") { s = KON; n = 2; }
@@ -228,8 +288,31 @@ int progModeIdx(const String &p, bool we, float h) {
   for (int i = 0; i < n; i++) if (s[i].h <= h) m = s[i].m;
   return m;
 }
+// Gun doner (saglik sayaclari), gecici artirma (boost) ve tatil modu
+void applyOverrides() {
+  time_t nowT = time(nullptr);
+  if (nowT < 1700000000) return;
+  uint32_t now = (uint32_t)nowT;
+  int day = (int)((now + TZ_OFFSET_S) / 86400);
+  if (day != healthDay) { healthDay = day; heatSecToday = 0; cyclesToday = 0; }
+  if (boostActive && (boostUntil == 0 || now >= boostUntil)) {            // sure doldu ya da uygulamadan iptal
+    boostActive = false; target = boostPrev; dirty = true; sendReply(); Serial.println("Artirma bitti");
+  } else if (!boostActive && boostUntil > now && boostUntil != boostSeen) {
+    boostSeen = boostUntil; boostPrev = target; target = constrain(boostTemp, 10.0f, 30.0f);
+    power = true; away = false; boostActive = true; dirty = true; sendReply(); Serial.println("Artirma basladi");
+  }
+  bool inHol = holFrom && holTo && now >= holFrom && now < holTo;
+  if (inHol && !holActive) {
+    holActive = true; holPrev = target; boostActive = false;
+    target = constrain(holTemp, 10.0f, 30.0f); dirty = true; sendReply(); Serial.println("Tatil modu basladi");
+  } else if (!inHol && holActive) {
+    holActive = false; target = holPrev; dirty = true; sendReply(); Serial.println("Tatil modu bitti");
+  }
+}
+
 void applyProgram() {
-  if (!schedValid || schedMode != "program" || !power || away) return;
+  if (boostActive || holActive) { preheat = false; return; }
+  if (!schedValid || schedMode != "program" || !power || away) { preheat = false; return; }
   if (millis() - lastProg < 30000) return;
   lastProg = millis();
   time_t now = time(nullptr);
@@ -237,6 +320,18 @@ void applyProgram() {
   struct tm t; localtime_r(&now, &t);
   int mi = progModeIdx(schedProg, t.tm_wday == 0 || t.tm_wday == 6, t.tm_hour + t.tm_min / 60.0f);
   float want = constrain(schedTemps[mi], 10.0f, 30.0f);
+  preheat = false;
+  if (!isnan(temp)) {   // ON ISITMA: yaklasan daha sicak dilimi hedefe tam zamaninda ulasmak icin erken baslat
+    for (int k = 10; k <= 180; k += 10) {
+      time_t fut = now + k * 60; struct tm ft; localtime_r(&fut, &ft);
+      int fi = progModeIdx(schedProg, ft.tm_wday == 0 || ft.tm_wday == 6, ft.tm_hour + ft.tm_min / 60.0f);
+      float fw = constrain(schedTemps[fi], 10.0f, 30.0f);
+      if (fw > want) {
+        if (fw > temp && (fw - temp) / heatRate * 60.0f >= k - 10) { want = fw; preheat = true; }
+        break;
+      }
+    }
+  }
   if (fabs(want - target) > 0.01) {
     target = want; progAt = (uint32_t)now; dirty = true; sendReply();
     Serial.printf("Program: hedef=%.1f\n", target);
@@ -479,6 +574,7 @@ void loop() {
     if (in.changed && (in.target != target || in.power != power)) {   // tusla degisti
       target = constrain(in.target, 10.0f, 30.0f);
       power = in.power;
+      boostActive = false;
       if (away) away = false;   // elle degisti: bos ev modundan cik
       if (schedMode == "program") { schedMode = "manual"; needModePush = true; }   // tusla elle degisti: programdan cik
       dirty = true;
@@ -488,6 +584,7 @@ void loop() {
   }
 
   checkWindow();
+  applyOverrides();
   applyProgram();
   updateRelay();
   checkAway();
